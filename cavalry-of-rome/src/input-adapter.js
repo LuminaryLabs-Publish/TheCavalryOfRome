@@ -10,7 +10,24 @@ export function createInputAdapter({ canvas, renderer, engine }) {
     if (event.button !== 0 || renderer.isFlyMode?.()) return;
 
     const hit = renderer.pick(event);
-    if (hit?.type === "region") renderer.selectRegion(hit.regionId);
+
+    if (hit?.type === "army") {
+      renderer.selectArmy?.(hit);
+      enqueue({ type: "selectArmy", regionId: hit.regionId, unitType: hit.unitType });
+      return;
+    }
+
+    if (hit?.type === "region") {
+      const selectedArmy = renderer.getSelectedArmy?.();
+      if (selectedArmy) {
+        enqueue({ type: "moveArmy", targetRegionId: hit.regionId });
+        renderer.clearSelectedArmy?.();
+      } else {
+        renderer.selectRegion(hit.regionId);
+      }
+      return;
+    }
+
     if (hit?.type === "lane") enqueue({ type: "selectLane", laneId: hit.laneId });
   });
 
@@ -18,7 +35,7 @@ export function createInputAdapter({ canvas, renderer, engine }) {
     const key = event.key.toLowerCase();
     const cameraFlightActive = document.pointerLockElement === canvas || (event.buttons & 2) === 2;
 
-    if (["1", "2", "3", " ", "r", "n", "a", "s", "d", "arrowup", "arrowdown", "arrowleft", "arrowright", "pageup", "pagedown"].includes(key)) {
+    if (["1", "2", "3", " ", "r", "n", "a", "s", "d", "escape", "arrowup", "arrowdown", "arrowleft", "arrowright", "pageup", "pagedown"].includes(key)) {
       event.preventDefault();
     }
 
@@ -31,6 +48,7 @@ export function createInputAdapter({ canvas, renderer, engine }) {
     if (!cameraFlightActive && key === "a") enqueue({ type: "selectLane", laneId: "left" });
     if (!cameraFlightActive && key === "s") enqueue({ type: "selectLane", laneId: "center" });
     if (!cameraFlightActive && key === "d") enqueue({ type: "selectLane", laneId: "right" });
+    if (key === "escape") renderer.clearSelectedArmy?.();
     if (key === " ") enqueue({ type: "charge" });
     if (key === "r") enqueue({ type: "rally" });
     if (key === "n") enqueue({ type: "restart" });
@@ -49,6 +67,8 @@ export function createInputAdapter({ canvas, renderer, engine }) {
       const action = pending.shift();
       if (action.type === "formation") engine.cavalry.setFormation(action.formation);
       if (action.type === "selectLane") engine.cavalry.selectLane(action.laneId);
+      if (action.type === "selectArmy") engine.cavalry.selectArmy(action.regionId, action.unitType);
+      if (action.type === "moveArmy") engine.cavalry.moveArmy(action.targetRegionId);
       if (action.type === "charge") engine.cavalry.charge();
       if (action.type === "rally") engine.cavalry.rally();
       if (action.type === "restart") engine.cavalry.restart();
