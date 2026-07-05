@@ -2,14 +2,14 @@ import * as THREE from "three";
 import { createRenderer as createBaseRenderer } from "./renderer.js";
 
 const THEATER_SCALE = 2.55;
-const WATER_MIN_CLEARANCE = 6.0;
-const WATER_EDGE_CLEARANCE = 7.25;
-const RIVER_WAVE_SINK_ALLOWANCE = 2.0;
-const LAKE_WAVE_SINK_ALLOWANCE = 1.2;
-const WATER_RENDER_ORDER = 10;
-const WATER_OVERLAY_RENDER_ORDER = 11;
-const STRUCTURE_FLAT_RADIUS = 920;
-const STRUCTURE_FLAT_SAMPLES = 44;
+const WATER_MIN_CLEARANCE = 14.0;
+const WATER_EDGE_CLEARANCE = 18.0;
+const RIVER_WAVE_SINK_ALLOWANCE = 4.0;
+const LAKE_WAVE_SINK_ALLOWANCE = 3.0;
+const WATER_RENDER_ORDER = 20;
+const WATER_OVERLAY_RENDER_ORDER = 21;
+const STRUCTURE_FLAT_RADIUS = 1180;
+const STRUCTURE_FLAT_SAMPLES = 64;
 
 const MAIN_RIVER_POINTS = [
   [-640, 2250],
@@ -128,7 +128,7 @@ function distanceToSegment2D(px, pz, ax, az, bx, bz) {
   return Math.sqrt(dx * dx + dz * dz);
 }
 
-function isNearKnownWater(x, z, clearance = 220) {
+function isNearKnownWater(x, z, clearance = 260) {
   const systems = [
     { points: MAIN_RIVER_POINTS, width: 74 },
     { points: BRANCH_RIVER_POINTS, width: 34 },
@@ -172,7 +172,7 @@ function findBestStructureSpot(x, z, radius = STRUCTURE_FLAT_RADIUS, samples = S
 
   for (let i = 0; i < samples; i += 1) {
     const angle = (i / samples) * Math.PI * 2;
-    for (const ringT of [0.18, 0.36, 0.58, 0.82, 1.0]) {
+    for (const ringT of [0.16, 0.3, 0.46, 0.64, 0.84, 1.0]) {
       const wobble = 0.92 + seededRandom(i * 101 + Math.floor(ringT * 1000)) * 0.18;
       const candidateX = x + Math.cos(angle) * radius * ringT * wobble;
       const candidateZ = z + Math.sin(angle) * radius * ringT * wobble;
@@ -209,10 +209,10 @@ function asMaterialList(material) {
 function applyWaterMaterialSafety(material, { overlay = false } = {}) {
   for (const entry of asMaterialList(material)) {
     entry.polygonOffset = true;
-    entry.polygonOffsetFactor = -6;
-    entry.polygonOffsetUnits = -12;
+    entry.polygonOffsetFactor = -10;
+    entry.polygonOffsetUnits = -20;
     entry.depthTest = true;
-    if (!overlay) entry.depthWrite = true;
+    entry.depthWrite = !overlay;
     entry.needsUpdate = true;
   }
 }
@@ -263,9 +263,9 @@ function lakeBasinY(definition) {
   const sinR = Math.sin(definition.rotation);
   const heights = [terrainHeight(centerX, centerZ)];
 
-  for (const ringT of [0.24, 0.42, 0.62, 0.76]) {
-    for (let i = 0; i < 24; i += 1) {
-      const angle = (i / 24) * Math.PI * 2;
+  for (const ringT of [0.22, 0.38, 0.54, 0.7, 0.84]) {
+    for (let i = 0; i < 32; i += 1) {
+      const angle = (i / 32) * Math.PI * 2;
       const localX = Math.cos(angle) * radiusX * ringT;
       const localZ = Math.sin(angle) * radiusZ * ringT;
       const x = centerX + localX * cosR - localZ * sinR;
@@ -275,7 +275,7 @@ function lakeBasinY(definition) {
   }
 
   heights.sort((a, b) => a - b);
-  return heights[Math.floor(heights.length * 0.58)] + WATER_MIN_CLEARANCE + LAKE_WAVE_SINK_ALLOWANCE;
+  return heights[Math.floor(heights.length * 0.86)] + WATER_MIN_CLEARANCE + LAKE_WAVE_SINK_ALLOWANCE;
 }
 
 function stabilizeLakeBase(mesh, definition) {
@@ -289,8 +289,8 @@ function stabilizeLakeBase(mesh, definition) {
     const x = positions.getX(i);
     const z = positions.getZ(i);
     const ringT = clamp(lakeLocalRadius(definition, x, z), 0, 1.35);
-    const edgeLift = ringT > 0.76 ? (ringT - 0.76) * 11.5 : 0;
-    const shorelineSafety = waterY(x, z, WATER_MIN_CLEARANCE + LAKE_WAVE_SINK_ALLOWANCE + edgeLift * 0.65);
+    const edgeLift = ringT > 0.76 ? (ringT - 0.76) * 14.0 : 0;
+    const shorelineSafety = waterY(x, z, WATER_MIN_CLEARANCE + LAKE_WAVE_SINK_ALLOWANCE + edgeLift * 0.7);
     const stableY = Math.max(basinY + edgeLift, shorelineSafety);
     baseY[i] = stableY;
     positions.setY(i, stableY);
@@ -412,8 +412,8 @@ function createDynamicEndpointCover() {
     opacity: 0.72,
     depthWrite: true,
     polygonOffset: true,
-    polygonOffsetFactor: -3,
-    polygonOffsetUnits: -6
+    polygonOffsetFactor: -5,
+    polygonOffsetUnits: -10
   });
 
   riverEndpointAnchors().forEach((anchor, index) => {
@@ -436,7 +436,7 @@ function createDynamicEndpointCover() {
       blending: THREE.NormalBlending
     });
     const mist = new THREE.Mesh(mistGeometry, mistMaterial);
-    mist.position.set(anchor.x, waterY(anchor.x, anchor.z, 10.0), anchor.z);
+    mist.position.set(anchor.x, waterY(anchor.x, anchor.z, 16.0), anchor.z);
     mist.scale.set(anchor.width * 5.2, anchor.width * 3.1, 1);
     mist.rotation.set(-Math.PI / 2, 0, anchor.rotation + Math.PI * 0.5);
     mist.renderOrder = WATER_OVERLAY_RENDER_ORDER + 2;
@@ -466,8 +466,11 @@ function stabilizeWaterSystem(waterSystem) {
   }
 
   for (const ribbon of waterSystem.userData.flowRibbons ?? []) {
-    stabilizeRibbonBase(ribbon, 1.25);
-    applyWaterMeshSafety(ribbon, { overlay: true });
+    ribbon.visible = false;
+    for (const material of asMaterialList(ribbon.material)) {
+      material.opacity = 0;
+      material.needsUpdate = true;
+    }
   }
 
   waterSystem.userData.waterSafetyApplied = true;
@@ -482,10 +485,6 @@ function clampWaterBeforeRender(waterSystem) {
 
   for (const lake of waterSystem.userData.lakes ?? []) {
     clampAnimatedWater(lake, WATER_MIN_CLEARANCE);
-  }
-
-  for (const ribbon of waterSystem.userData.flowRibbons ?? []) {
-    clampAnimatedWater(ribbon, WATER_MIN_CLEARANCE + 0.9);
   }
 }
 
@@ -519,22 +518,67 @@ function isLargeGroundedStructure(object) {
   return hasManyMeshes && tallEnough && wideEnough && !tooSmallForPalacePass;
 }
 
+function createStructurePad(x, z, radius, y) {
+  const segments = 72;
+  const vertices = [x, y, z];
+  const indices = [];
+
+  for (let i = 0; i <= segments; i += 1) {
+    const angle = (i / segments) * Math.PI * 2;
+    const vx = x + Math.cos(angle) * radius;
+    const vz = z + Math.sin(angle) * radius * 0.78;
+    vertices.push(vx, y, vz);
+    if (i < segments) indices.push(0, i + 1, i + 2);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshStandardMaterial({
+    color: "#8b7650",
+    roughness: 0.96,
+    metalness: 0.0,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -8
+  });
+  const pad = new THREE.Mesh(geometry, material);
+  pad.receiveShadow = true;
+  pad.renderOrder = 8;
+  return pad;
+}
+
 function flattenMajorGroundedStructures(scene) {
   const structures = [];
   scene.traverse((object) => {
     if (isLargeGroundedStructure(object)) structures.push(object);
   });
 
+  const padGroup = new THREE.Group();
+  padGroup.name = "major-structure-flat-ground-pads";
+
   for (const structure of structures) {
+    const box = new THREE.Box3().setFromObject(structure);
+    const size = new THREE.Vector3();
+    box.getSize(size);
     const currentX = structure.position.x;
     const currentZ = structure.position.z;
-    const currentOffset = clamp(structure.position.y - terrainHeight(currentX, currentZ), 8, 28);
+    const currentOffset = clamp(structure.position.y - terrainHeight(currentX, currentZ), 10, 32);
     const spot = findBestStructureSpot(currentX, currentZ);
-    structure.position.set(spot.x, terrainHeight(spot.x, spot.z) + currentOffset, spot.z);
+    const padRadius = clamp(Math.max(size.x, size.z) * 0.72, 145, 520);
+    const padY = terrainHeight(spot.x, spot.z) + 7.5;
+    structure.position.set(spot.x, padY + currentOffset, spot.z);
+    structure.rotation.x = 0;
+    structure.rotation.z = 0;
     structure.up.set(0, 1, 0);
     structure.updateMatrixWorld(true);
     structure.userData.flatGroundAdjusted = true;
+    padGroup.add(createStructurePad(spot.x, spot.z, padRadius, padY - 1.6));
   }
+
+  if (padGroup.children.length > 0) scene.add(padGroup);
 }
 
 export async function createRenderer(canvas) {
@@ -545,6 +589,7 @@ export async function createRenderer(canvas) {
   stabilizeWaterSystem(waterSystem);
   flattenMajorGroundedStructures(base.scene);
   base.scene.add(createDynamicEndpointCover());
+  base.scene.userData.waterSafetyVersion = "visible-water-structure-pass-2";
 
   const originalRender = base.renderer.render.bind(base.renderer);
   base.renderer.render = (scene, camera) => {
