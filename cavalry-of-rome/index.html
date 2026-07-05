@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Cavalry of Rome</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      background: #0e1922;
+      color: #f5ead5;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    html,
+    body {
+      margin: 0;
+      height: 100%;
+      overflow: hidden;
+      background: #0e1922;
+    }
+
+    #app,
+    #game {
+      position: fixed;
+      inset: 0;
+    }
+
+    #game {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      cursor: crosshair;
+      touch-action: manipulation;
+    }
+
+    #errorPanel {
+      position: fixed;
+      left: 1rem;
+      right: 1rem;
+      bottom: 1rem;
+      z-index: 10;
+      max-height: 45vh;
+      overflow: auto;
+      white-space: pre-wrap;
+      padding: 1rem;
+      border: 1px solid rgba(255, 118, 92, 0.55);
+      border-radius: 0.75rem;
+      background: rgba(63, 16, 13, 0.92);
+      color: #ffe2d8;
+      box-shadow: 0 1rem 2.5rem rgba(0,0,0,0.4);
+    }
+
+    #errorPanel[hidden] {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <main id="app" aria-label="Cavalry of Rome playable canvas game">
+    <canvas id="game" role="application" aria-label="Cavalry of Rome battlefield"></canvas>
+    <section id="errorPanel" role="alert" hidden></section>
+  </main>
+
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
