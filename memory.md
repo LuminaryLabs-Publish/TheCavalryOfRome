@@ -57,3 +57,5 @@
 - Intent: Make terrain provinces directly clickable outside fly mode and show province control through colored fog.
 - Finding: Province picking previously only used small center discs and markers, so terrain clicks across most of a province could not select it.
 - Finding: Provinces now have broad irregular terrain-clinging pick surfaces, colored overhead fog by owner, and full-footprint selection highlighting.
+- Intent: Hydrology correction for lakes, bridges, and water-respecting roads.
+- Finding: Lakes should not be random map ornaments. The active wrapper now repositions lake meshes to river-end basins, searches nearby low terrain around selected river termini, keeps lake surfaces contour-following, skips endpoint caps where rivers feed lakes, generates bridges over river/path crossings, and sinks path vertices that enter lake footprints.
