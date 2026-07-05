@@ -37,6 +37,16 @@ test("initial state is deterministic and inspectable", () => {
   assert.equal(state.sequence.nodeId, "deploy");
 });
 
+test("deployment overlook does not decay before the first command", () => {
+  const engine = createEngine();
+  runSeconds(engine, 120);
+
+  const state = engine.cavalry.getState();
+  assert.equal(state.mode, "deploying");
+  assert.equal(state.player.morale, cavalryOfRomeLevel01.player.morale);
+  assert.equal(state.player.cohesion, cavalryOfRomeLevel01.player.cohesion);
+});
+
 test("formation and lane commands update state through the kit API", () => {
   const engine = createEngine();
 

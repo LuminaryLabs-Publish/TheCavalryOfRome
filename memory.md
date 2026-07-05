@@ -4,3 +4,56 @@
 - Finding: Git repo root is TheCavalryOfRome, so workflows must live in repo-level .github/workflows.
 - Finding: The app is a no-build static site rooted at cavalry-of-rome/index.html, so Pages can serve the folder directly.
 - Finding: cavalry-of-rome contains a nested .github folder, so Pages artifact must be staged cleanly to avoid publishing workflow files.
+- Intent: Reframe the game as a 3D-first WebGPU/WebGL experience.
+- Intent: First gameplay goal is a cinematic overlook of complex terrain.
+- Finding: Existing architecture already separates deterministic simulation from rendering, so a 3D renderer swap is feasible without rewriting the kit.
+- Intent: Attain the first goal by replacing the 2D canvas battlefield with a full-screen cinematic 3D terrain overlook.
+- Finding: Three.js 0.185.1 exposes WebGPURenderer through three/webgpu; that renderer targets WebGPU first and falls back to WebGL 2.
+- Finding: Local port 5173 was already serving another app during validation, so the correct app was verified on port 8787.
+- Intent: Improve the cinematic overlook after screenshot review showed washed-out fog, sparse terrain detail, and idle-state defeat.
+- Finding: Deployment mode should not drain morale/cohesion before the first command; the overlook must remain stable while the player explores.
+- Finding: Terrain readability improved with darker water, warmer directional light, rock outcrops, tree lines, reduced fog density, and better rider silhouettes.
+- Intent: Make camera flight reliable and replace the straight water strip with a terrain-aware natural river.
+- Finding: Camera movement now works with normalized arrow keys, and right-mouse steering works without relying solely on pointer lock.
+- Finding: River is now generated from curved terrain-sampled ribbons with banks, a branch, and subtle integrated current bands instead of floating foam strips.
+- Intent: Improve terrain quality by hiding river/path endpoints in fog, separating roads from the river, and upgrading troops into grounded full-body low-poly units.
+- Finding: River and roads now extend into dense ground fog instead of ending with exposed hard cuts.
+- Finding: Road network uses terrain-following bank/ridge paths that avoid river intersection.
+- Finding: Troops and props now sample terrain normals; soldiers have legs, armor, heads, helmets, shields, and weapons.
+- Intent: Cohesion pass to make the terrain overlook feel less finite and more authored.
+- Finding: Larger terrain footprint removed visible world-edge cuts when flying high.
+- Finding: Trees now use fixed randomized lean instead of ground-normal alignment.
+- Finding: River reeds and road shoulder stones help bind water, paths, terrain, and vegetation into one scene language.
+- Intent: Scale the overlook into a regional terrain selection map.
+- Finding: The previous pass had regional terrain dimensions but battlefield-scale camera bounds, object sizes, river widths, and prop density.
+- Finding: Terrain, rivers, roads, fog, forests, rocks, troops, and flight controls now use a larger regional footprint with smaller denser map dressing.
+- Intent: Re-scale the map toward a Risk-style theater representing an area as large as Europe.
+- Finding: The regional pass still authored routes in one-valley coordinates, so terrain size alone could not create theater-scale readability.
+- Finding: The renderer now uses a theater coordinate multiplier, continent-scale terrain frequencies, high-altitude camera bounds, and thousands of tiny instanced map props.
+- Finding: Territory border strokes and stronghold markers were added so the terrain reads as a selectable Risk-scale strategy board, not only a large landscape.
+- Intent: Fix skybox clipping and add denser province-scale settlement and army detail.
+- Finding: The sky dome was static and larger than the camera far plane, so high-altitude theater views could clip it.
+- Finding: The sky dome now follows the camera, while villages and green, blue, and red province force circles add Risk-map detail.
+- Intent: Make Risk-scale regions selectable from the terrain map.
+- Finding: The previous picker only returned battlefield lane ids, so province objects could not drive selection state.
+- Finding: Region selection now uses terrain-following province hit discs, region metadata, visible selection highlighting, and HUD feedback.
+- Intent: Invert mouse-look movement and make the Risk-scale terrain richer.
+- Finding: Mouse-look axes were still using the original steering signs, so camera movement did not match the requested inverted feel.
+- Finding: Terrain now has higher mesh resolution, erosion cuts, terraces, richer biome vertex coloring, farmland parcels, and dense scrub ground dressing.
+- Intent: Add outlying farmsteads, dense forests, prime landmarks, and immense regional strongholds.
+- Finding: Previous strongholds were still small tower pins, so they did not read as regional capitals.
+- Finding: Strongholds now use western castle and eastern temple variants, with farmsteads, dense forest patches, and prime landmarks added across the theater.
+- Intent: Fix weird stronghold rotation and make travel paths distinct from province lines.
+- Finding: Strongholds inherited full terrain-normal rotation, which tilted large castle and temple compounds incorrectly on slopes.
+- Finding: Strongholds now stay upright with yaw-only placement, province borders are blue dotted overlays, and dense cobbled/dirt paths are separate terrain-following routes.
+- Intent: Add more rivers, full lakes, shader-driven water, and revise landmarks.
+- Finding: The previous water system only had two rivers and a physical material, so it did not match the requested shader or the Europe-scale map.
+- Finding: Water now uses the provided GLSL turbulence as a reusable object shader with extra river systems, lake bodies, shoreline banks, and animated shader time.
+- Finding: Landmarks now have more entries, varied immense/small scales, and flat upright placement.
+- Finding: The WebGPU renderer rejected ShaderMaterial, so the runtime now uses WebGL2 for the requested GLSL object water shader.
+- Intent: Adapt the pasted multipass terrain shader pattern into the regional terrain renderer without losing visual quality.
+- Finding: The pasted code is a screen-space raymarch cache pattern; the efficient fit for this app is a single-pass object terrain shader over real mesh geometry.
+- Finding: Terrain now uses GLSL tri-noise turbulence, ridge quantization, height/slope biome shading, sun lighting, and distance fog in one terrain draw call.
+- Intent: Make terrain provinces directly clickable outside fly mode and show province control through colored fog.
+- Finding: Province picking previously only used small center discs and markers, so terrain clicks across most of a province could not select it.
+- Finding: Provinces now have broad irregular terrain-clinging pick surfaces, colored overhead fog by owner, and full-footprint selection highlighting.

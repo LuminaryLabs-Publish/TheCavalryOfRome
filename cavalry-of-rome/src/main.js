@@ -13,7 +13,7 @@ function showFatal(error) {
   errorPanel.textContent = String(error?.stack ?? error?.message ?? error);
 }
 
-function boot() {
+async function boot() {
   if (!canvas) throw new Error("Missing #game canvas");
 
   const engine = createRealtimeGame({
@@ -22,7 +22,7 @@ function boot() {
     ]
   });
 
-  const renderer = createRenderer(canvas);
+  const renderer = await createRenderer(canvas);
   const input = createInputAdapter({ canvas, renderer, engine });
 
   let running = true;
@@ -65,8 +65,4 @@ function boot() {
   requestAnimationFrame(frame);
 }
 
-try {
-  boot();
-} catch (error) {
-  showFatal(error);
-}
+boot().catch(showFatal);

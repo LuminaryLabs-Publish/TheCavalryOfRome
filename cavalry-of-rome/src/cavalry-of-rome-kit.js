@@ -302,6 +302,7 @@ function updateContinuousBattle(world, state) {
   state.player.rallyCooldown = clamp((state.player.rallyCooldown ?? 0) - dt, 0, 99);
 
   if (["victory", "defeat"].includes(state.mode)) return;
+  if (state.mode === "deploying") return;
 
   for (const lane of Object.values(state.lanes)) {
     if (lane.status === "routed") continue;
