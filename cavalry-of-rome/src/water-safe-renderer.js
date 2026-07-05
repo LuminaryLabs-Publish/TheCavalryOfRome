@@ -33,13 +33,13 @@ const ADDITIONAL_RIVER_SYSTEMS = [
   { width: 28, points: [[-2860, -2100], [-2400, -1920], [-1920, -1640], [-1680, -860], [-1440, -420], [-1180, -120]] }
 ];
 
-const LAKE_DEFINITIONS = [
-  { center: [-2520, -240], radiusX: 340, radiusZ: 190, rotation: 0.35 },
-  { center: [3020, 760], radiusX: 420, radiusZ: 230, rotation: -0.25 },
-  { center: [-1180, 2320], radiusX: 300, radiusZ: 180, rotation: 0.12 },
-  { center: [1780, -2240], radiusX: 380, radiusZ: 210, rotation: 0.48 },
-  { center: [420, -360], radiusX: 260, radiusZ: 145, rotation: -0.42 },
-  { center: [-3260, 1020], radiusX: 280, radiusZ: 170, rotation: 0.78 }
+const LAKE_ENDPOINT_SOURCES = [
+  { system: { width: 74, points: MAIN_RIVER_POINTS }, end: "start", radiusX: 360, radiusZ: 205, basinRadius: 820 },
+  { system: { width: 74, points: MAIN_RIVER_POINTS }, end: "end", radiusX: 440, radiusZ: 245, basinRadius: 940 },
+  { system: { width: 34, points: BRANCH_RIVER_POINTS }, end: "start", radiusX: 310, radiusZ: 180, basinRadius: 720 },
+  { system: ADDITIONAL_RIVER_SYSTEMS[0], end: "start", radiusX: 360, radiusZ: 200, basinRadius: 860 },
+  { system: ADDITIONAL_RIVER_SYSTEMS[2], end: "end", radiusX: 330, radiusZ: 190, basinRadius: 760 },
+  { system: ADDITIONAL_RIVER_SYSTEMS[3], end: "start", radiusX: 390, radiusZ: 220, basinRadius: 900 }
 ];
 
 const ROAD_PATHS = [
@@ -86,12 +86,9 @@ function terrainSlope(x, z, step = 42) {
 
 function waterY(x, z, clearance = WATER_MIN_CLEARANCE) { return terrainHeight(x, z) + clearance; }
 function lakeY(x, z, clearance = LAKE_CONTOUR_CLEARANCE) { return terrainHeight(x, z) + clearance; }
-function clampWaterY(x, z, y, clearance = WATER_MIN_CLEARANCE) { return Math.max(y, waterY(x, z, clearance)); }
 function scaledPoint(point) { return [point[0] * THEATER_SCALE, point[1] * THEATER_SCALE]; }
 function seededRandom(seed) { return Math.abs(Math.sin(seed * 12.9898) * 43758.5453) % 1; }
 
-function segmentPoint(a, b, t) { return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t }; }
-function segmentLength(a, b) { return Math.hypot(b.x - a.x, b.z - a.z); }
 function pathToSegments(path) {
   const scaled = path.points.map(([x, z]) => ({ x: x * THEATER_SCALE, z: z * THEATER_SCALE }));
   return scaled.slice(1).map((point, index) => ({ a: scaled[index], b: point, width: path.width * THEATER_SCALE, kind: path.kind }));
@@ -100,7 +97,15 @@ function riverSegments() {
   const systems = [{ points: MAIN_RIVER_POINTS, width: 74 }, { points: BRANCH_RIVER_POINTS, width: 34 }, ...ADDITIONAL_RIVER_SYSTEMS];
   return systems.flatMap((system) => pathToSegments({ points: system.points, width: system.width, kind: "river" }));
 }
-
+function segmentPoint(a, b, t) { return { x: a.x + (b.x - a.x) * t, z: a.z + (b.z - a.z) * t }; }
+function distanceToSegment2D(px, pz, ax, az, bx, bz) {
+  const abx = bx - ax; const abz = bz - az;
+  const apx = px - ax; const apz = pz - az;
+  const lenSq = abx * abx + abz * abz;
+  const t = lenSq === 0 ? 0 : clamp((apx * abx + apz * abz) / lenSq, 0, 1);
+  const x = ax + abx * t; const z = az + abz * t;
+  return Math.hypot(px - x, pz - z);
+}
 function closestPointsOnSegments(a, b, c, d) {
   const ux = b.x - a.x; const uz = b.z - a.z;
   const vx = d.x - c.x; const vz = d.z - c.z;
@@ -119,13 +124,56 @@ function closestPointsOnSegments(a, b, c, d) {
   return { p, q, distance: Math.hypot(p.x - q.x, p.z - q.z), s, t };
 }
 
-function distanceToSegment2D(px, pz, ax, az, bx, bz) {
-  const abx = bx - ax; const abz = bz - az;
-  const apx = px - ax; const apz = pz - az;
-  const lenSq = abx * abx + abz * abz;
-  const t = lenSq === 0 ? 0 : clamp((apx * abx + apz * abz) / lenSq, 0, 1);
-  const x = ax + abx * t; const z = az + abz * t;
-  return Math.hypot(px - x, pz - z);
+function endpointSourceWorld(source) {
+  const points = source.system.points;
+  const endpoint = source.end === "start" ? points[0] : points[points.length - 1];
+  const neighbor = source.end === "start" ? points[1] : points[points.length - 2];
+  const [x, z] = scaledPoint(endpoint);
+  const [nx, nz] = scaledPoint(neighbor);
+  return { x, z, nx, nz };
+}
+
+function findLowBasinNear(x, z, radius, seed) {
+  let best = { x, z, height: terrainHeight(x, z), slope: terrainSlope(x, z), distance: 0 };
+  for (let i = 0; i < 48; i += 1) {
+    const angle = (i / 48) * Math.PI * 2;
+    for (const ringT of [0.18, 0.34, 0.52, 0.72, 0.92, 1.0]) {
+      const wobble = 0.88 + seededRandom(seed * 200 + i * 13 + Math.floor(ringT * 100)) * 0.24;
+      const candidateX = x + Math.cos(angle) * radius * ringT * wobble;
+      const candidateZ = z + Math.sin(angle) * radius * ringT * wobble;
+      const distance = Math.hypot(candidateX - x, candidateZ - z);
+      const height = terrainHeight(candidateX, candidateZ);
+      const slope = terrainSlope(candidateX, candidateZ);
+      const score = height + slope * 1.8 + distance * 0.035;
+      const bestScore = best.height + best.slope * 1.8 + best.distance * 0.035;
+      if (score < bestScore) best = { x: candidateX, z: candidateZ, height, slope, distance };
+    }
+  }
+  return best;
+}
+
+let resolvedLakeDefinitions = null;
+function getLakeDefinitions() {
+  if (resolvedLakeDefinitions) return resolvedLakeDefinitions;
+  resolvedLakeDefinitions = LAKE_ENDPOINT_SOURCES.map((source, index) => {
+    const endpoint = endpointSourceWorld(source);
+    const basin = findLowBasinNear(endpoint.x, endpoint.z, source.basinRadius, index + 10);
+    const maxCenterShift = source.radiusX * THEATER_SCALE * 0.62;
+    const shiftDistance = Math.hypot(basin.x - endpoint.x, basin.z - endpoint.z);
+    const shiftT = shiftDistance > maxCenterShift ? maxCenterShift / shiftDistance : 1;
+    const centerX = endpoint.x + (basin.x - endpoint.x) * shiftT;
+    const centerZ = endpoint.z + (basin.z - endpoint.z) * shiftT;
+    const tangentYaw = Math.atan2(endpoint.nz - endpoint.z, endpoint.nx - endpoint.x);
+    return {
+      center: [centerX / THEATER_SCALE, centerZ / THEATER_SCALE],
+      radiusX: source.radiusX,
+      radiusZ: source.radiusZ,
+      rotation: tangentYaw + Math.PI * 0.5,
+      source: source.end,
+      hydrology: "river-end-basin"
+    };
+  });
+  return resolvedLakeDefinitions;
 }
 
 function lakeLocalRadius(definition, x, z) {
@@ -142,7 +190,7 @@ function lakeLocalRadius(definition, x, z) {
   return Math.sqrt((localX * localX) / (radiusX * radiusX) + (localZ * localZ) / (radiusZ * radiusZ));
 }
 function isInsideLake(x, z, margin = 0) {
-  return LAKE_DEFINITIONS.some((lake) => lakeLocalRadius({ ...lake, radiusX: lake.radiusX + margin / THEATER_SCALE, radiusZ: lake.radiusZ + margin / THEATER_SCALE }, x, z) < 1.0);
+  return getLakeDefinitions().some((lake) => lakeLocalRadius({ ...lake, radiusX: lake.radiusX + margin / THEATER_SCALE, radiusZ: lake.radiusZ + margin / THEATER_SCALE }, x, z) < 1.0);
 }
 function isNearKnownWater(x, z, clearance = 260) {
   for (const segment of riverSegments()) {
@@ -209,20 +257,36 @@ function stabilizeRibbonBase(mesh, sinkAllowance = RIVER_WAVE_SINK_ALLOWANCE) {
   mesh.geometry.computeVertexNormals();
 }
 
-function stabilizeLakeBase(mesh, definition) {
+function repositionLakeMeshToDefinition(mesh, definition) {
   const positions = mesh.geometry?.attributes?.position;
   const baseY = mesh.userData?.baseY;
   if (!positions || !baseY || !definition) return;
+  const centerX = definition.center[0] * THEATER_SCALE;
+  const centerZ = definition.center[1] * THEATER_SCALE;
+  const radiusX = definition.radiusX * THEATER_SCALE;
+  const radiusZ = definition.radiusZ * THEATER_SCALE;
+  const cosR = Math.cos(definition.rotation);
+  const sinR = Math.sin(definition.rotation);
+  const rings = 5;
+  const segments = Math.max(8, Math.round(positions.count / (rings + 1)) - 1);
+  const row = segments + 1;
   for (let i = 0; i < positions.count; i += 1) {
-    const x = positions.getX(i); const z = positions.getZ(i);
-    const ringT = clamp(lakeLocalRadius(definition, x, z), 0, 1.25);
+    const ring = Math.floor(i / row);
+    const column = i % row;
+    const ringT = Math.min(1, ring / rings);
+    const angle = (column / segments) * Math.PI * 2;
+    const localX = Math.cos(angle) * radiusX * ringT;
+    const localZ = Math.sin(angle) * radiusZ * ringT;
+    const x = centerX + localX * cosR - localZ * sinR;
+    const z = centerZ + localX * sinR + localZ * cosR;
     const edgeLift = ringT > 0.86 ? (ringT - 0.86) * 4.0 : 0;
-    const stableY = terrainHeight(x, z) + LAKE_CONTOUR_CLEARANCE + edgeLift;
-    baseY[i] = stableY;
-    positions.setY(i, stableY);
+    const y = terrainHeight(x, z) + LAKE_CONTOUR_CLEARANCE + edgeLift;
+    positions.setXYZ(i, x, y, z);
+    baseY[i] = y;
   }
   positions.needsUpdate = true;
   mesh.geometry.computeVertexNormals();
+  mesh.userData.hydrology = "river-end-basin";
 }
 
 function clampAnimatedWater(mesh, clearance = WATER_MIN_CLEARANCE, yResolver = waterY) {
@@ -293,6 +357,7 @@ function createDynamicEndpointCover() {
   const mistGeometry = new THREE.PlaneGeometry(1, 1);
   const capMaterial = new THREE.MeshStandardMaterial({ color: "#6d6246", roughness: 0.98, metalness: 0.0, transparent: true, opacity: 0.72, depthWrite: true, polygonOffset: true, polygonOffsetFactor: -5, polygonOffsetUnits: -10 });
   riverEndpointAnchors().forEach((anchor, index) => {
+    if (isInsideLake(anchor.x, anchor.z, 220)) return;
     group.add(createTerrainEndcap({ x: anchor.x, z: anchor.z, radiusX: anchor.width * 0.9, radiusZ: anchor.width * 0.48, rotation: anchor.rotation, material: capMaterial }));
     const mistMaterial = new THREE.MeshBasicMaterial({ color: index % 2 ? "#d5ded4" : "#c8d2c9", map: mistTexture, transparent: true, opacity: 0.24, depthWrite: false, blending: THREE.NormalBlending });
     const mist = new THREE.Mesh(mistGeometry, mistMaterial);
@@ -308,17 +373,19 @@ function createDynamicEndpointCover() {
 
 function stabilizeWaterSystem(waterSystem) {
   if (!waterSystem || waterSystem.userData.waterSafetyApplied) return;
+  const lakeDefinitions = getLakeDefinitions();
   for (const material of waterSystem.userData.waterMaterials ?? []) applyWaterMaterialSafety(material);
   for (const river of waterSystem.userData.rivers ?? []) { stabilizeRibbonBase(river, RIVER_WAVE_SINK_ALLOWANCE); applyWaterMeshSafety(river); }
   for (let i = 0; i < (waterSystem.userData.lakes ?? []).length; i += 1) {
     const lake = waterSystem.userData.lakes[i];
-    stabilizeLakeBase(lake, LAKE_DEFINITIONS[i]);
+    repositionLakeMeshToDefinition(lake, lakeDefinitions[i % lakeDefinitions.length]);
     applyWaterMeshSafety(lake);
   }
   for (const ribbon of waterSystem.userData.flowRibbons ?? []) {
     ribbon.visible = false;
     for (const material of asMaterialList(ribbon.material)) { material.opacity = 0; material.needsUpdate = true; }
   }
+  waterSystem.userData.lakeDefinitions = lakeDefinitions;
   waterSystem.userData.waterSafetyApplied = true;
 }
 
@@ -375,7 +442,7 @@ function createRiverBridges() {
         if (hit.distance > threshold || hit.s < 0.03 || hit.s > 0.97 || hit.t < 0.02 || hit.t > 0.98) continue;
         const x = (hit.p.x + hit.q.x) * 0.5;
         const z = (hit.p.z + hit.q.z) * 0.5;
-        if (isInsideLake(x, z, 110)) continue;
+        if (isInsideLake(x, z, 140)) continue;
         if (made.some((prior) => Math.hypot(prior.x - x, prior.z - z) < 260)) continue;
         made.push({ x, z });
         group.add(createBridgeDeck({ x, z, yaw: pathYaw, length: Math.max(120, river.width * 1.55), width: Math.max(34, pathSegment.width * 2.7), kind: path.kind }));
@@ -389,7 +456,6 @@ function pathMaterialLooksLikePath(material) {
   const color = material?.color?.getHexString?.();
   return ["a8895a", "6d593d", "817666", "8b6842"].includes(color);
 }
-
 function sinkPathVerticesInsideLakes(scene) {
   scene.traverse((object) => {
     if (!object.isMesh || !object.geometry?.attributes?.position || !asMaterialList(object.material).some(pathMaterialLooksLikePath)) return;
@@ -398,7 +464,7 @@ function sinkPathVerticesInsideLakes(scene) {
     for (let i = 0; i < positions.count; i += 1) {
       const local = new THREE.Vector3(positions.getX(i), positions.getY(i), positions.getZ(i));
       object.localToWorld(local);
-      if (!isInsideLake(local.x, local.z, 42)) continue;
+      if (!isInsideLake(local.x, local.z, 52)) continue;
       const sunkWorldY = terrainHeight(local.x, local.z) - 28;
       const sunkLocal = object.worldToLocal(new THREE.Vector3(local.x, sunkWorldY, local.z));
       positions.setY(i, sunkLocal.y);
@@ -419,7 +485,6 @@ function isLargeGroundedStructure(object) {
   const tooSmallForPalacePass = size.y < 260 && Math.max(size.x, size.z) < 70;
   return hasManyMeshes && tallEnough && wideEnough && !tooSmallForPalacePass;
 }
-
 function createStructurePad(x, z, radius, y) {
   const segments = 72;
   const vertices = [x, y, z];
@@ -438,7 +503,6 @@ function createStructurePad(x, z, radius, y) {
   const pad = new THREE.Mesh(geometry, material); pad.receiveShadow = true; pad.renderOrder = 8;
   return pad;
 }
-
 function flattenMajorGroundedStructures(scene) {
   const structures = [];
   scene.traverse((object) => { if (isLargeGroundedStructure(object)) structures.push(object); });
@@ -469,7 +533,7 @@ export async function createRenderer(canvas) {
   flattenMajorGroundedStructures(base.scene);
   base.scene.add(createRiverBridges());
   base.scene.add(createDynamicEndpointCover());
-  base.scene.userData.waterSafetyVersion = "lake-contour-bridges-pass-3";
+  base.scene.userData.waterSafetyVersion = "river-end-basin-lakes-pass-4";
 
   const originalRender = base.renderer.render.bind(base.renderer);
   base.renderer.render = (scene, camera) => {
