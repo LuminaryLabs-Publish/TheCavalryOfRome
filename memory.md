@@ -59,3 +59,5 @@
 - Finding: Provinces now have broad irregular terrain-clinging pick surfaces, colored overhead fog by owner, and full-footprint selection highlighting.
 - Intent: Hydrology correction for lakes, bridges, and water-respecting roads.
 - Finding: Lakes should not be random map ornaments. The active wrapper now repositions lake meshes to river-end basins, searches nearby low terrain around selected river termini, keeps lake surfaces contour-following, skips endpoint caps where rivers feed lakes, generates bridges over river/path crossings, and sinks path vertices that enter lake footprints.
+- Intent: Add province army movement mechanics.
+- Finding: Army groups are currently defined by units stacked in the same province. Each province starts with 10 light, 5 medium, and 5 heavy units. The app now renders selectable army rings, supports click army ring then click destination province, and creates long terrain-theater march timers before units join the destination province stack.
