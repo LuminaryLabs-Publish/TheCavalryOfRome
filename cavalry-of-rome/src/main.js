@@ -2,7 +2,7 @@ import { createRealtimeGame } from "./runtime.js";
 import { createCavalryOfRomeKit } from "./cavalry-of-rome-kit.js";
 import { cavalryOfRomeLevel01 } from "./level-01.js";
 import { createInputAdapter } from "./input-adapter.js";
-import { createRenderer } from "./water-safe-renderer.js";
+import { createRenderer } from "./prop-safe-renderer.js";
 
 const canvas = document.querySelector("#game");
 const errorPanel = document.querySelector("#errorPanel");
