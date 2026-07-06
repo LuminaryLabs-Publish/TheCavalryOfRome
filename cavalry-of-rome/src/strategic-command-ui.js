@@ -5,7 +5,22 @@ function el(tag, className, text = "") {
   const node = document.createElement(tag);
   if (className) node.className = className;
   if (text) node.textContent = text;
+  if (tag === "button") node.type = "button";
   return node;
+}
+
+function consumeUiEvent(event) {
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function bindButton(button, handler) {
+  button.addEventListener("pointerdown", consumeUiEvent);
+  button.addEventListener("mousedown", consumeUiEvent);
+  button.addEventListener("click", (event) => {
+    consumeUiEvent(event);
+    if (!button.disabled) handler(event);
+  });
 }
 
 function injectStyles() {
@@ -17,11 +32,11 @@ function injectStyles() {
       position: fixed;
       right: 22px;
       bottom: 22px;
-      z-index: 10;
-      width: 338px;
+      z-index: 30;
+      width: 360px;
       min-height: 318px;
       box-sizing: border-box;
-      background: linear-gradient(180deg, rgba(34, 25, 17, 0.94), rgba(17, 14, 11, 0.96));
+      background: linear-gradient(180deg, rgba(34, 25, 17, 0.95), rgba(17, 14, 11, 0.97));
       border: 1px solid rgba(214, 181, 117, 0.72);
       border-radius: 0;
       box-shadow: 0 18px 42px rgba(0,0,0,0.52), inset 0 0 0 1px rgba(255,240,196,0.08);
@@ -41,6 +56,7 @@ function injectStyles() {
       border-bottom: 1px solid rgba(214, 181, 117, 0.35);
       padding-bottom: 7px;
       margin-bottom: 8px;
+      padding-right: 30px;
     }
     .strategic-command-meta {
       font-size: 11px;
@@ -62,14 +78,14 @@ function injectStyles() {
     }
     .strategic-command-button:hover { background: rgba(154, 107, 54, 0.62); }
     .strategic-command-button.active { background: rgba(151, 36, 30, 0.66); border-color: rgba(255, 207, 132, 0.7); }
-    .strategic-command-button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .strategic-command-button:disabled { opacity: 0.43; cursor: not-allowed; }
     .strategic-command-section { border-top: 1px solid rgba(214, 181, 117, 0.22); padding-top: 8px; }
-    .strategic-unit-row { display: grid; grid-template-columns: 72px 1fr 34px 34px; align-items: center; gap: 6px; margin: 6px 0; font-size: 11px; }
+    .strategic-unit-row { display: grid; grid-template-columns: 72px 1fr 32px 34px 34px; align-items: center; gap: 6px; margin: 6px 0; font-size: 11px; }
     .strategic-unit-name { color: #ffe0a4; text-transform: uppercase; }
     .strategic-unit-count { color: rgba(241,223,189,0.72); }
     .strategic-count-box { text-align: center; color: #fff1ca; border: 1px solid rgba(214, 181, 117, 0.32); padding: 5px 0; background: rgba(0,0,0,0.22); }
     .strategic-command-footer { margin-top: 10px; display: grid; grid-template-columns: 1fr; gap: 6px; }
-    .strategic-command-note { min-height: 30px; font-size: 11px; line-height: 1.35; color: rgba(241,223,189,0.72); }
+    .strategic-command-note { min-height: 34px; font-size: 11px; line-height: 1.35; color: rgba(241,223,189,0.72); }
     .strategic-command-close { position: absolute; right: 8px; top: 7px; width: 25px; height: 24px; padding: 0; }
   `;
   document.head.append(style);
@@ -88,6 +104,10 @@ function unitsFor(campaign, regionId, unitType, count) {
   return (campaign?.units ?? [])
     .filter((unit) => unit.status === "garrison" && unit.regionId === regionId && unit.unitType === unitType)
     .slice(0, Math.max(0, count));
+}
+
+function emptyDraft() {
+  return { light: 0, medium: 0, heavy: 0 };
 }
 
 export function createStrategicCommandUi({ canvas, renderer, engine }) {
@@ -110,9 +130,13 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
   panel.append(close, title, meta, tabs, section, footer);
   document.body.append(panel);
 
+  for (const eventName of ["pointerdown", "mousedown", "mouseup", "click", "dblclick", "wheel"]) {
+    panel.addEventListener(eventName, (event) => event.stopPropagation());
+  }
+
   let selectedRegion = null;
   let mode = "march";
-  let draft = { light: 0, medium: 0, heavy: 0 };
+  let draft = emptyDraft();
 
   function strategyState() {
     return engine.strategy?.getState?.();
@@ -128,7 +152,7 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
   }
 
   function clearDraft() {
-    draft = { light: 0, medium: 0, heavy: 0 };
+    draft = emptyDraft();
   }
 
   function setMode(nextMode) {
@@ -147,20 +171,31 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
       panel.classList.remove("visible");
       return;
     }
-    selectedRegion = { ...regionHit, ...region };
+    selectedRegion = { ...regionHit, ...region, regionId: regionHit.regionId ?? region.id };
     clearDraft();
     panel.classList.add("visible");
     render();
   }
 
-  function addCount(unitType, delta, available) {
-    const next = Math.max(0, Math.min(available, draft[unitType] + delta));
-    draft[unitType] = next;
+  function setCount(unitType, value, available) {
+    draft = {
+      ...draft,
+      [unitType]: Math.max(0, Math.min(available, value))
+    };
     render();
   }
 
+  function addCount(unitType, delta, available) {
+    setCount(unitType, Number(draft[unitType] ?? 0) + delta, available);
+  }
+
   function selectedTotal() {
-    return UNIT_ORDER.reduce((sum, unitType) => sum + draft[unitType], 0);
+    return UNIT_ORDER.reduce((sum, unitType) => sum + Number(draft[unitType] ?? 0), 0);
+  }
+
+  function draftCost() {
+    const costs = engine.strategy?.getUnitCosts?.() ?? {};
+    return UNIT_ORDER.reduce((sum, unitType) => sum + Number(draft[unitType] ?? 0) * Number(costs[unitType]?.cost ?? 0), 0);
   }
 
   function renderRows() {
@@ -177,11 +212,14 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
         : `${costs[unitType]?.cost ?? 0} gold each`;
       const available = mode === "march" ? counts[unitType] ?? 0 : 99;
       const availableNode = el("div", "strategic-unit-count", availableText);
-      const count = el("div", "strategic-count-box", String(draft[unitType]));
+      const count = el("div", "strategic-count-box", String(draft[unitType] ?? 0));
+      const minus = el("button", "strategic-command-button", "−");
       const plus = el("button", "strategic-command-button", "+");
-      plus.disabled = mode === "march" && draft[unitType] >= available;
-      plus.addEventListener("click", () => addCount(unitType, 1, available));
-      row.append(label, availableNode, count, plus);
+      minus.disabled = Number(draft[unitType] ?? 0) <= 0;
+      plus.disabled = mode === "march" && Number(draft[unitType] ?? 0) >= available;
+      bindButton(minus, () => addCount(unitType, -1, available));
+      bindButton(plus, () => addCount(unitType, 1, available));
+      row.append(label, availableNode, count, minus, plus);
       section.append(row);
     }
   }
@@ -190,17 +228,19 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
     const state = strategyState();
     if (!selectedRegion || !state) return;
     const region = currentRegionState();
+    const total = selectedTotal();
+    const cost = draftCost();
     title.textContent = `${region?.label ?? selectedRegion.regionLabel ?? selectedRegion.regionId} Command`;
     meta.innerHTML = [
       `Red province · Turn ${state.turn} · ${state.phase}`,
       `Gold ${state.gold} · World actions ${state.worldActionsRemaining}/${state.maxWorldActions}`
     ].join("<br>");
     renderRows();
-    actionButton.textContent = mode === "march" ? "Prepare March" : "Craft Troops";
-    actionButton.disabled = selectedTotal() <= 0 || state.worldActionsRemaining <= 0;
+    actionButton.textContent = mode === "march" ? "Prepare March" : `Craft Troops${cost > 0 ? ` · ${cost} Gold` : ""}`;
+    actionButton.disabled = total <= 0 || state.worldActionsRemaining <= 0 || (mode === "recruit" && cost > state.gold);
     note.textContent = mode === "march"
-      ? "Add light, medium, or heavy groups, then prepare the march and click a destination province."
-      : "Crafting spends gold and one world action for the selected type/count.";
+      ? "Use + / − to choose groups, then prepare the march and click a destination province."
+      : "Use + / − to craft unit groups. Crafting spends gold and one world action.";
   }
 
   function prepareMarch() {
@@ -235,24 +275,27 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
   function craftTroops() {
     const state = strategyState();
     if (!selectedRegion || !state || state.worldActionsRemaining <= 0 || selectedTotal() <= 0) return;
-    const firstType = UNIT_ORDER.find((unitType) => draft[unitType] > 0);
-    if (!firstType) return;
-    engine.strategy.recruitUnit(selectedRegion.regionId, firstType, draft[firstType]);
+    for (const unitType of UNIT_ORDER) {
+      const count = Number(draft[unitType] ?? 0);
+      if (count <= 0) continue;
+      engine.strategy.recruitUnit(selectedRegion.regionId, unitType, count);
+      break;
+    }
     clearDraft();
     note.textContent = "Recruitment ordered. The new unit groups will appear after the next tick.";
     render();
   }
 
-  actionButton.addEventListener("click", () => {
+  bindButton(actionButton, () => {
     if (mode === "march") prepareMarch();
     else craftTroops();
   });
-  close.addEventListener("click", () => {
+  bindButton(close, () => {
     selectedRegion = null;
     panel.classList.remove("visible");
   });
-  marchTab.addEventListener("click", () => setMode("march"));
-  recruitTab.addEventListener("click", () => setMode("recruit"));
+  bindButton(marchTab, () => setMode("march"));
+  bindButton(recruitTab, () => setMode("recruit"));
 
   canvas.addEventListener("click", (event) => {
     if (event.button !== 0 || renderer.isFlyMode?.()) return;
