@@ -275,11 +275,11 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
   function craftTroops() {
     const state = strategyState();
     if (!selectedRegion || !state || state.worldActionsRemaining <= 0 || selectedTotal() <= 0) return;
-    for (const unitType of UNIT_ORDER) {
-      const count = Number(draft[unitType] ?? 0);
-      if (count <= 0) continue;
-      engine.strategy.recruitUnit(selectedRegion.regionId, unitType, count);
-      break;
+    if (engine.strategy.recruitUnits) {
+      engine.strategy.recruitUnits(selectedRegion.regionId, { ...draft });
+    } else {
+      const firstType = UNIT_ORDER.find((unitType) => draft[unitType] > 0);
+      if (firstType) engine.strategy.recruitUnit(selectedRegion.regionId, firstType, draft[firstType]);
     }
     clearDraft();
     note.textContent = "Recruitment ordered. The new unit groups will appear after the next tick.";
