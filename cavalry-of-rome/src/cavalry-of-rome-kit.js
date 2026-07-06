@@ -9,7 +9,7 @@ import {
   createSequenceState
 } from "./sequences.js";
 
-export const CAVALRY_OF_ROME_KIT_VERSION = "0.2.0";
+export const CAVALRY_OF_ROME_KIT_VERSION = "0.3.0";
 
 export const CavalryState = defineResource("cavalryOfRome.state");
 
@@ -24,10 +24,10 @@ export const BattleCompleted = defineEvent("cavalry.battle.completed");
 export const BattleFailed = defineEvent("cavalry.battle.failed");
 export const CommandRejected = defineEvent("cavalry.command.rejected");
 export const RestartRequested = defineEvent("cavalry.restart.requested");
-export const ArmySelected = defineEvent("cavalry.army.selected");
-export const ArmyMoveRequested = defineEvent("cavalry.army.move.requested");
-export const ArmyMarchStarted = defineEvent("cavalry.army.march.started");
-export const ArmyMarchCompleted = defineEvent("cavalry.army.march.completed");
+export const UnitSelected = defineEvent("cavalry.unit.selected");
+export const UnitMoveRequested = defineEvent("cavalry.unit.move.requested");
+export const UnitMarchStarted = defineEvent("cavalry.unit.march.started");
+export const UnitMarchCompleted = defineEvent("cavalry.unit.march.completed");
 
 const REGIONS = [
   { id: "gallia", label: "Gallia", center: [-2260, 1360], owner: "blue" },
@@ -43,9 +43,9 @@ const REGIONS = [
 ];
 
 const UNIT_TYPES = {
-  light: { label: "Light", start: 10, speed: 0.88 },
-  medium: { label: "Medium", start: 5, speed: 1.0 },
-  heavy: { label: "Heavy", start: 5, speed: 1.14 }
+  light: { label: "Light", start: 10, soldiers: 24, speed: 0.88, cost: 30 },
+  medium: { label: "Medium", start: 5, soldiers: 42, speed: 1.0, cost: 55 },
+  heavy: { label: "Heavy", start: 5, soldiers: 64, speed: 1.14, cost: 80 }
 };
 
 const EVENT_CARD_LIBRARY = [
@@ -83,34 +83,97 @@ function appendLog(state, entry) {
   state.commandLog = [entry, ...(state.commandLog ?? [])].slice(0, 8);
 }
 
-function createCampaignState() {
-  const regions = Object.fromEntries(REGIONS.map((region) => [region.id, clone(region)]));
-  const armies = Object.fromEntries(REGIONS.map((region) => [
+function createInitialUnits(regions) {
+  const units = [];
+  let unitIndex = 1;
+  for (const region of Object.values(regions)) {
+    for (const [unitType, config] of Object.entries(UNIT_TYPES)) {
+      for (let i = 0; i < config.start; i += 1) {
+        units.push({
+          id: `${region.id}-${unitType}-${i + 1}`,
+          serial: unitIndex++,
+          label: `${config.label} ${i + 1}`,
+          unitType,
+          soldiers: config.soldiers,
+          maxSoldiers: config.soldiers,
+          owner: region.owner,
+          regionId: region.id,
+          status: "garrison",
+          marchId: null,
+          experience: 0
+        });
+      }
+    }
+  }
+  return units;
+}
+
+function summarizeArmies(campaign) {
+  const armies = Object.fromEntries(Object.values(campaign.regions).map((region) => [
     region.id,
     {
       regionId: region.id,
       owner: region.owner,
-      units: {
-        light: UNIT_TYPES.light.start,
-        medium: UNIT_TYPES.medium.start,
-        heavy: UNIT_TYPES.heavy.start
-      }
+      units: { light: 0, medium: 0, heavy: 0 },
+      unitIds: []
     }
   ]));
 
-  return {
+  for (const unit of campaign.units ?? []) {
+    if (unit.status !== "garrison" || !unit.regionId || !armies[unit.regionId]) continue;
+    armies[unit.regionId].units[unit.unitType] += 1;
+    armies[unit.regionId].unitIds.push(unit.id);
+  }
+
+  return armies;
+}
+
+function selectedUnits(campaign) {
+  const selectedIds = new Set(campaign.selectedUnitIds ?? []);
+  return (campaign.units ?? []).filter((unit) => selectedIds.has(unit.id));
+}
+
+function normalizeCampaign(campaign) {
+  campaign.armies = summarizeArmies(campaign);
+  campaign.selectedUnits = selectedUnits(campaign).map((unit) => ({
+    id: unit.id,
+    label: unit.label,
+    unitType: unit.unitType,
+    soldiers: unit.soldiers,
+    regionId: unit.regionId,
+    owner: unit.owner
+  }));
+  campaign.selectedArmy = campaign.selectedUnits.length === 1
+    ? {
+        armyId: campaign.selectedUnits[0].id,
+        unitId: campaign.selectedUnits[0].id,
+        regionId: campaign.selectedUnits[0].regionId,
+        unitType: campaign.selectedUnits[0].unitType,
+        owner: campaign.selectedUnits[0].owner,
+        count: 1,
+        soldiers: campaign.selectedUnits[0].soldiers
+      }
+    : null;
+}
+
+function createCampaignState() {
+  const regions = Object.fromEntries(REGIONS.map((region) => [region.id, clone(region)]));
+  const campaign = {
     gold: 120,
     turn: 1,
     regions,
-    armies,
+    units: createInitialUnits(regions),
     marches: [],
+    selectedUnitIds: [],
+    selectedUnits: [],
     selectedArmy: null,
-    hoveredArmyId: null,
     eventCards: EVENT_CARD_LIBRARY,
     pendingEventCards: [],
     lastArmyEvent: null,
     nextMarchId: 1
   };
+  normalizeCampaign(campaign);
+  return campaign;
 }
 
 function createInitialState(level) {
@@ -212,14 +275,7 @@ function resolveImpact(world, state) {
     formation: state.formation
   });
   state.lastEvent = impactEvent.type;
-  appendLog(
-    state,
-    makeLogEntry(
-      world,
-      `${formation.label} impact on ${lane.enemyLabel}: -${impactDamage} strength, -${moraleDamage} morale.`,
-      "impact"
-    )
-  );
+  appendLog(state, makeLogEntry(world, `${formation.label} impact on ${lane.enemyLabel}: -${impactDamage} strength, -${moraleDamage} morale.`, "impact"));
 
   if ((lane.strength <= 0 || lane.morale <= 0) && lane.status !== "routed") {
     lane.status = "routed";
@@ -243,17 +299,8 @@ function levelSafePlayerTroopers(state) {
 function handleFormation(world, state, event) {
   const formationId = event.formation ?? event.formationId;
   const formation = state.formations[formationId];
-
-  if (!formation) {
-    emitRejection(world, state, `Unknown formation: ${formationId}`, "formation");
-    return;
-  }
-
-  if (["victory", "defeat"].includes(state.mode)) {
-    emitRejection(world, state, "The battle is already decided.", "formation");
-    return;
-  }
-
+  if (!formation) return emitRejection(world, state, `Unknown formation: ${formationId}`, "formation");
+  if (["victory", "defeat"].includes(state.mode)) return emitRejection(world, state, "The battle is already decided.", "formation");
   state.formation = formation.id;
   state.lastRejection = null;
   state.lastEvent = FormationRequested.name;
@@ -263,22 +310,9 @@ function handleFormation(world, state, event) {
 function handleLaneSelection(world, state, event) {
   const laneId = event.laneId;
   const lane = state.lanes[laneId];
-
-  if (!lane) {
-    emitRejection(world, state, `Unknown lane: ${laneId}`, "selectLane");
-    return;
-  }
-
-  if (lane.status === "routed") {
-    emitRejection(world, state, `${lane.enemyLabel} is already routed.`, "selectLane");
-    return;
-  }
-
-  if (state.mode === "charging") {
-    emitRejection(world, state, "Cannot redirect during a committed charge.", "selectLane");
-    return;
-  }
-
+  if (!lane) return emitRejection(world, state, `Unknown lane: ${laneId}`, "selectLane");
+  if (lane.status === "routed") return emitRejection(world, state, `${lane.enemyLabel} is already routed.`, "selectLane");
+  if (state.mode === "charging") return emitRejection(world, state, "Cannot redirect during a committed charge.", "selectLane");
   state.selectedLane = laneId;
   state.mode = state.mode === "deploying" ? "maneuver" : state.mode;
   state.lastRejection = null;
@@ -310,61 +344,60 @@ function marchDurationSeconds(campaign, fromRegionId, toRegionId, unitType) {
   const distance = regionDistance(fromRegion, toRegion);
   const distanceT = clamp(distance / maxRegionDistance(campaign), 0, 1);
   const typeFactor = UNIT_TYPES[unitType]?.speed ?? 1;
-  const duration = (600 + distanceT * 600) * typeFactor;
-  return clamp(Math.round(duration), 420, 1200);
+  return clamp(Math.round((600 + distanceT * 600) * typeFactor), 420, 1200);
 }
 
-function handleArmySelection(world, state, event) {
-  const { regionId, unitType } = event;
-  const stack = state.campaign.armies?.[regionId];
-  const count = Number(stack?.units?.[unitType] ?? 0);
-  if (!stack || !UNIT_TYPES[unitType]) {
-    emitRejection(world, state, "Unknown army group.", "selectArmy");
-    return;
+function handleUnitSelection(world, state, event) {
+  const unitId = event.unitId ?? event.armyId;
+  const append = Boolean(event.append ?? event.shiftKey);
+  const unit = state.campaign.units.find((candidate) => candidate.id === unitId);
+  if (!unit || unit.status !== "garrison") return emitRejection(world, state, "Unknown or unavailable unit group.", "selectUnit");
+
+  const selected = new Set(state.campaign.selectedUnitIds ?? []);
+  if (append) {
+    if (selected.has(unit.id)) {
+      selected.delete(unit.id);
+    } else {
+      selected.add(unit.id);
+    }
+  } else {
+    selected.clear();
+    selected.add(unit.id);
   }
-  if (count <= 0) {
-    emitRejection(world, state, `No ${unitType} units remain in ${state.campaign.regions[regionId]?.label ?? regionId}.`, "selectArmy");
-    return;
-  }
-  const armyId = `${regionId}:${unitType}`;
-  state.campaign.selectedArmy = { armyId, regionId, unitType, owner: stack.owner, count };
-  state.campaign.lastArmyEvent = `Selected ${count} ${UNIT_TYPES[unitType].label} units in ${state.campaign.regions[regionId].label}.`;
-  state.lastEvent = ArmySelected.name;
+
+  state.campaign.selectedUnitIds = [...selected];
+  normalizeCampaign(state.campaign);
+  const count = state.campaign.selectedUnitIds.length;
+  state.campaign.lastArmyEvent = count === 1
+    ? `Selected ${UNIT_TYPES[unit.unitType].label} unit in ${state.campaign.regions[unit.regionId].label}.`
+    : `Selected ${count} unit groups.`;
+  state.lastEvent = UnitSelected.name;
   appendLog(state, makeLogEntry(world, state.campaign.lastArmyEvent, "command"));
-  world.emit(ArmySelected, state.campaign.selectedArmy);
+  world.emit(UnitSelected, { unitId: unit.id, append, selectedUnitIds: state.campaign.selectedUnitIds });
 }
 
-function handleArmyMove(world, state, event) {
-  const selected = state.campaign.selectedArmy;
+function handleUnitMove(world, state, event) {
   const targetRegionId = event.targetRegionId ?? event.regionId;
-  if (!selected) {
-    emitRejection(world, state, "Select a light, medium, or heavy army ring first.", "moveArmy");
-    return;
-  }
-  if (!state.campaign.regions[targetRegionId]) {
-    emitRejection(world, state, `Unknown target province: ${targetRegionId}`, "moveArmy");
-    return;
-  }
-  if (selected.regionId === targetRegionId) {
-    emitRejection(world, state, "Army is already in that province.", "moveArmy");
-    return;
-  }
-  const sourceStack = state.campaign.armies[selected.regionId];
-  const count = Number(sourceStack?.units?.[selected.unitType] ?? 0);
-  if (count <= 0) {
-    emitRejection(world, state, "Selected army group no longer has units available.", "moveArmy");
-    state.campaign.selectedArmy = null;
-    return;
-  }
+  if (!state.campaign.regions[targetRegionId]) return emitRejection(world, state, `Unknown target province: ${targetRegionId}`, "moveUnits");
 
-  const durationSeconds = marchDurationSeconds(state.campaign, selected.regionId, targetRegionId, selected.unitType);
-  sourceStack.units[selected.unitType] = 0;
+  const units = selectedUnits(state.campaign).filter((unit) => unit.status === "garrison");
+  if (units.length === 0) return emitRejection(world, state, "Select one or more unit rings first.", "moveUnits");
+
+  const sourceRegionId = units[0].regionId;
+  if (units.some((unit) => unit.regionId !== sourceRegionId)) {
+    return emitRejection(world, state, "Selected units must be stacked in the same province to move as a group.", "moveUnits");
+  }
+  if (sourceRegionId === targetRegionId) return emitRejection(world, state, "Selected units are already in that province.", "moveUnits");
+
+  const durationSeconds = Math.max(...units.map((unit) => marchDurationSeconds(state.campaign, sourceRegionId, targetRegionId, unit.unitType)));
   const march = {
     id: `march-${state.campaign.nextMarchId++}`,
-    owner: sourceStack.owner,
-    unitType: selected.unitType,
-    count,
-    fromRegionId: selected.regionId,
+    owner: units[0].owner,
+    unitIds: units.map((unit) => unit.id),
+    units: units.map((unit) => ({ id: unit.id, label: unit.label, unitType: unit.unitType, soldiers: unit.soldiers })),
+    count: units.length,
+    soldiers: units.reduce((sum, unit) => sum + unit.soldiers, 0),
+    fromRegionId: sourceRegionId,
     toRegionId: targetRegionId,
     startedAt: world.__nexusClock.elapsed,
     durationSeconds,
@@ -372,12 +405,20 @@ function handleArmyMove(world, state, event) {
     progress: 0,
     status: "marching"
   };
+
+  for (const unit of units) {
+    unit.status = "marching";
+    unit.marchId = march.id;
+    unit.regionId = sourceRegionId;
+  }
+
   state.campaign.marches.push(march);
-  state.campaign.selectedArmy = null;
-  state.campaign.lastArmyEvent = `${count} ${UNIT_TYPES[selected.unitType].label} units marching from ${state.campaign.regions[march.fromRegionId].label} to ${state.campaign.regions[targetRegionId].label}.`;
-  state.lastEvent = ArmyMarchStarted.name;
+  state.campaign.selectedUnitIds = [];
+  normalizeCampaign(state.campaign);
+  state.campaign.lastArmyEvent = `${units.length} unit groups marching from ${state.campaign.regions[sourceRegionId].label} to ${state.campaign.regions[targetRegionId].label}.`;
+  state.lastEvent = UnitMarchStarted.name;
   appendLog(state, makeLogEntry(world, `${state.campaign.lastArmyEvent} ETA ${Math.round(durationSeconds / 60)} min.`, "command"));
-  world.emit(ArmyMarchStarted, march);
+  world.emit(UnitMarchStarted, march);
 }
 
 function updateCampaignMarches(world, state) {
@@ -394,43 +435,30 @@ function updateCampaignMarches(world, state) {
   }
 
   for (const march of arrivals) {
-    const targetStack = state.campaign.armies[march.toRegionId];
-    if (!targetStack) continue;
-    targetStack.units[march.unitType] = Number(targetStack.units[march.unitType] ?? 0) + march.count;
-    state.campaign.lastArmyEvent = `${march.count} ${UNIT_TYPES[march.unitType].label} units arrived in ${state.campaign.regions[march.toRegionId].label}.`;
+    for (const unitId of march.unitIds ?? []) {
+      const unit = state.campaign.units.find((candidate) => candidate.id === unitId);
+      if (!unit) continue;
+      unit.regionId = march.toRegionId;
+      unit.status = "garrison";
+      unit.marchId = null;
+      unit.experience += 1;
+    }
+    state.campaign.lastArmyEvent = `${march.count} unit groups arrived in ${state.campaign.regions[march.toRegionId].label}.`;
     appendLog(state, makeLogEntry(world, state.campaign.lastArmyEvent, "success"));
-    world.emit(ArmyMarchCompleted, march);
+    world.emit(UnitMarchCompleted, march);
   }
 
   state.campaign.marches = state.campaign.marches.filter((march) => march.status === "marching");
+  normalizeCampaign(state.campaign);
 }
 
 function handleCharge(world, state) {
-  if (["victory", "defeat"].includes(state.mode)) {
-    emitRejection(world, state, "The battle is already decided.", "charge");
-    return;
-  }
-
-  if (state.mode === "charging") {
-    emitRejection(world, state, "A charge is already underway.", "charge");
-    return;
-  }
-
+  if (["victory", "defeat"].includes(state.mode)) return emitRejection(world, state, "The battle is already decided.", "charge");
+  if (state.mode === "charging") return emitRejection(world, state, "A charge is already underway.", "charge");
   const lane = state.lanes[state.selectedLane];
-  if (!lane || lane.status === "routed") {
-    emitRejection(world, state, "No valid enemy lane is selected.", "charge");
-    return;
-  }
-
-  if (state.player.cohesion < 12) {
-    emitRejection(world, state, "Cohesion too low. Rally before another charge.", "charge");
-    return;
-  }
-
-  if (state.player.morale < 10) {
-    emitRejection(world, state, "Morale too low to charge.", "charge");
-    return;
-  }
+  if (!lane || lane.status === "routed") return emitRejection(world, state, "No valid enemy lane is selected.", "charge");
+  if (state.player.cohesion < 12) return emitRejection(world, state, "Cohesion too low. Rally before another charge.", "charge");
+  if (state.player.morale < 10) return emitRejection(world, state, "Morale too low to charge.", "charge");
 
   const chargeDistance = Math.max(lane.distance, 260);
   lane.distance = chargeDistance;
@@ -439,36 +467,20 @@ function handleCharge(world, state) {
   state.player.chargeDistance = chargeDistance;
   state.player.momentum = clamp(18 + (100 - state.player.fatigue) * 0.25, 10, 52);
   state.lastRejection = null;
-  const started = world.emit(ChargeStarted, {
-    laneId: lane.id,
-    formation: state.formation,
-    distance: chargeDistance
-  });
+  const started = world.emit(ChargeStarted, { laneId: lane.id, formation: state.formation, distance: chargeDistance });
   state.lastEvent = started.type;
   appendLog(state, makeLogEntry(world, `Charge started toward ${lane.enemyLabel}.`, "command"));
 }
 
 function handleRally(world, state) {
-  if (["victory", "defeat"].includes(state.mode)) {
-    emitRejection(world, state, "The battle is already decided.", "rally");
-    return;
-  }
-
-  if (state.mode === "charging") {
-    emitRejection(world, state, "Cannot rally during a charge.", "rally");
-    return;
-  }
-
-  if (state.player.rallyCooldown > 0) {
-    emitRejection(world, state, `Rally cooldown: ${state.player.rallyCooldown.toFixed(1)}s.`, "rally");
-    return;
-  }
+  if (["victory", "defeat"].includes(state.mode)) return emitRejection(world, state, "The battle is already decided.", "rally");
+  if (state.mode === "charging") return emitRejection(world, state, "Cannot rally during a charge.", "rally");
+  if (state.player.rallyCooldown > 0) return emitRejection(world, state, `Rally cooldown: ${state.player.rallyCooldown.toFixed(1)}s.`, "rally");
 
   const formation = state.formations[state.formation] ?? state.formations.line;
   const moraleGain = Math.round(8 * formation.rallyBonus);
   const cohesionGain = Math.round(14 * formation.rallyBonus);
   const fatigueRecovery = state.formation === "screen" ? 8 : 5;
-
   state.player.morale = clamp(state.player.morale + moraleGain, 0, 100);
   state.player.cohesion = clamp(state.player.cohesion + cohesionGain, 0, 100);
   state.player.fatigue = clamp(state.player.fatigue - fatigueRecovery, 0, 100);
@@ -481,10 +493,8 @@ function handleRally(world, state) {
 
 function updateContinuousBattle(world, state) {
   const dt = world.__nexusClock.delta;
-
   state.player.rallyCooldown = clamp((state.player.rallyCooldown ?? 0) - dt, 0, 99);
   updateCampaignMarches(world, state);
-
   if (["victory", "defeat"].includes(state.mode)) return;
   if (state.mode === "deploying") return;
 
@@ -503,19 +513,14 @@ function updateContinuousBattle(world, state) {
       state.mode = "maneuver";
       return;
     }
-
     const formation = state.formations[state.formation] ?? state.formations.line;
     const speed = 135 * formation.speed * clamp(1 - state.player.fatigue / 180, 0.55, 1.1);
-    const distanceStep = speed * dt;
-    lane.distance = clamp(lane.distance - distanceStep, 0, 900);
+    lane.distance = clamp(lane.distance - speed * dt, 0, 900);
     state.player.chargeDistance = lane.distance;
     state.player.momentum = clamp(state.player.momentum + dt * 30 * formation.speed, 0, 100);
     state.player.fatigue = clamp(state.player.fatigue + dt * 5.8 * formation.cohesionDrain, 0, 100);
     state.player.cohesion = clamp(state.player.cohesion - dt * 2.6 * formation.cohesionDrain, 0, 100);
-
-    if (lane.distance <= 0) {
-      resolveImpact(world, state);
-    }
+    if (lane.distance <= 0) resolveImpact(world, state);
   } else if (state.mode === "maneuver") {
     state.player.fatigue = clamp(state.player.fatigue - dt * 1.25, 0, 100);
     state.player.cohesion = clamp(state.player.cohesion + dt * 0.65, 0, 100);
@@ -524,7 +529,6 @@ function updateContinuousBattle(world, state) {
 
 function evaluateBattleEnd(world, state) {
   if (["victory", "defeat"].includes(state.mode)) return;
-
   if (activeEnemyLanes(state).length === 0) {
     state.mode = "victory";
     state.score += Math.round(state.player.troopers * 20 + state.player.morale * 2 + state.player.cohesion * 2);
@@ -532,28 +536,20 @@ function evaluateBattleEnd(world, state) {
     appendLog(state, makeLogEntry(world, `Victory: the Sabine Road is secure. Score ${state.score}.`, "success"));
     return;
   }
-
   if (state.player.morale <= 0 || state.player.cohesion <= 0 || state.player.troopers <= 0) {
     state.mode = "defeat";
-    world.emit(BattleFailed, {
-      morale: state.player.morale,
-      cohesion: state.player.cohesion,
-      troopers: state.player.troopers
-    });
+    world.emit(BattleFailed, { morale: state.player.morale, cohesion: state.player.cohesion, troopers: state.player.troopers });
     appendLog(state, makeLogEntry(world, "Defeat: the cavalry line breaks.", "failure"));
   }
 }
 
 export function createCavalryOfRomeKit(config = {}) {
   const level = config.level;
-  if (!level) {
-    throw new Error("createCavalryOfRomeKit requires a level config");
-  }
+  if (!level) throw new Error("createCavalryOfRomeKit requires a level config");
 
   function cavalrySystem(world) {
     const previous = world.getResource(CavalryState);
     if (!previous) return;
-
     let state = clone(previous);
     const sequenceEvents = [];
 
@@ -562,45 +558,21 @@ export function createCavalryOfRomeKit(config = {}) {
       state.lastEvent = event.type;
       appendLog(state, makeLogEntry(world, "Scenario restarted.", "command"));
     }
-
-    for (const event of world.readEvents(FormationRequested)) {
-      handleFormation(world, state, event);
-      sequenceEvents.push(event);
-    }
-
-    for (const event of world.readEvents(LaneSelected)) {
-      handleLaneSelection(world, state, event);
-      sequenceEvents.push(event);
-    }
-
-    for (const event of world.readEvents(ArmySelected)) {
-      handleArmySelection(world, state, event);
-      sequenceEvents.push(event);
-    }
-
-    for (const event of world.readEvents(ArmyMoveRequested)) {
-      handleArmyMove(world, state, event);
-      sequenceEvents.push(...world.readEvents(ArmyMarchStarted));
-    }
-
-    for (const event of world.readEvents(ChargeRequested)) {
-      handleCharge(world, state, event);
-      sequenceEvents.push(...world.readEvents(ChargeStarted));
-    }
-
-    for (const event of world.readEvents(RallyRequested)) {
-      handleRally(world, state, event);
-      sequenceEvents.push(event);
-    }
+    for (const event of world.readEvents(FormationRequested)) { handleFormation(world, state, event); sequenceEvents.push(event); }
+    for (const event of world.readEvents(LaneSelected)) { handleLaneSelection(world, state, event); sequenceEvents.push(event); }
+    for (const event of world.readEvents(UnitSelected)) { handleUnitSelection(world, state, event); sequenceEvents.push(event); }
+    for (const event of world.readEvents(UnitMoveRequested)) { handleUnitMove(world, state, event); sequenceEvents.push(...world.readEvents(UnitMarchStarted)); }
+    for (const event of world.readEvents(ChargeRequested)) { handleCharge(world, state); sequenceEvents.push(...world.readEvents(ChargeStarted)); }
+    for (const event of world.readEvents(RallyRequested)) { handleRally(world, state); sequenceEvents.push(event); }
 
     updateContinuousBattle(world, state);
     evaluateBattleEnd(world, state);
+    normalizeCampaign(state.campaign);
 
     sequenceEvents.push(...world.readEvents(ImpactResolved));
     sequenceEvents.push(...world.readEvents(EnemyRouted));
-    sequenceEvents.push(...world.readEvents(ArmyMarchCompleted));
+    sequenceEvents.push(...world.readEvents(UnitMarchCompleted));
     state.sequence = advanceCavalrySequence(state.sequence, level.sequence, sequenceEvents);
-
     world.setResource(CavalryState, state);
   }
 
@@ -620,65 +592,43 @@ export function createCavalryOfRomeKit(config = {}) {
       BattleFailed,
       CommandRejected,
       RestartRequested,
-      ArmySelected,
-      ArmyMoveRequested,
-      ArmyMarchStarted,
-      ArmyMarchCompleted
+      UnitSelected,
+      UnitMoveRequested,
+      UnitMarchStarted,
+      UnitMarchCompleted
     },
-    systems: [
-      {
-        phase: "simulate",
-        name: "cavalryOfRomeSystem",
-        system: cavalrySystem
-      }
-    ],
+    systems: [{ phase: "simulate", name: "cavalryOfRomeSystem", system: cavalrySystem }],
     initWorld({ world }) {
       world.setResource(CavalryState, createInitialState(level));
     },
     install({ engine, world }) {
       engine.cavalry = {
-        getState() {
-          return world.getResource(CavalryState);
-        },
-        setFormation(formation) {
-          world.emit(FormationRequested, { formation });
-          return world.getResource(CavalryState);
-        },
-        selectLane(laneId) {
-          world.emit(LaneSelected, { laneId });
-          return world.getResource(CavalryState);
-        },
+        getState() { return world.getResource(CavalryState); },
+        setFormation(formation) { world.emit(FormationRequested, { formation }); return world.getResource(CavalryState); },
+        selectLane(laneId) { world.emit(LaneSelected, { laneId }); return world.getResource(CavalryState); },
+        selectUnit(unitId, append = false) { world.emit(UnitSelected, { unitId, append }); return world.getResource(CavalryState); },
         selectArmy(regionId, unitType) {
-          world.emit(ArmySelected, { regionId, unitType });
-          return world.getResource(CavalryState);
+          const state = world.getResource(CavalryState);
+          const unit = state.campaign.units.find((candidate) => candidate.regionId === regionId && candidate.unitType === unitType && candidate.status === "garrison");
+          if (unit) world.emit(UnitSelected, { unitId: unit.id, append: false });
+          return state;
         },
-        moveArmy(targetRegionId) {
-          world.emit(ArmyMoveRequested, { targetRegionId });
-          return world.getResource(CavalryState);
-        },
-        charge() {
-          world.emit(ChargeRequested, {});
-          return world.getResource(CavalryState);
-        },
-        rally() {
-          world.emit(RallyRequested, {});
-          return world.getResource(CavalryState);
-        },
-        restart() {
-          world.emit(RestartRequested, {});
-          return world.getResource(CavalryState);
-        },
+        moveUnits(targetRegionId) { world.emit(UnitMoveRequested, { targetRegionId }); return world.getResource(CavalryState); },
+        moveArmy(targetRegionId) { world.emit(UnitMoveRequested, { targetRegionId }); return world.getResource(CavalryState); },
+        charge() { world.emit(ChargeRequested, {}); return world.getResource(CavalryState); },
+        rally() { world.emit(RallyRequested, {}); return world.getResource(CavalryState); },
+        restart() { world.emit(RestartRequested, {}); return world.getResource(CavalryState); },
         formatStatus() {
           const state = world.getResource(CavalryState);
-          const selectedArmy = state.campaign?.selectedArmy;
-          const armyStatus = selectedArmy ? ` | ${selectedArmy.count} ${selectedArmy.unitType} selected` : "";
+          const selectedCount = state.campaign?.selectedUnitIds?.length ?? 0;
+          const armyStatus = selectedCount ? ` | ${selectedCount} unit groups selected` : "";
           return `${state.mode} | ${state.formations[state.formation].label} | morale ${formatPercent(state.player.morale)} | cohesion ${formatPercent(state.player.cohesion)}${armyStatus}`;
         }
       };
     },
     metadata: {
       title: "Cavalry of Rome",
-      purpose: "Deterministic tactical cavalry command loop with province army movement scaffolding.",
+      purpose: "Deterministic tactical cavalry command loop with individual province unit groups and grouped marching.",
       version: CAVALRY_OF_ROME_KIT_VERSION
     }
   });
