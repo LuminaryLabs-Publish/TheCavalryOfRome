@@ -4,7 +4,7 @@ import {
   defineRuntimeKit
 } from "./runtime.js";
 
-export const STRATEGIC_BOARD_GAME_LOOP_KIT_VERSION = "0.1.0";
+export const STRATEGIC_BOARD_GAME_LOOP_KIT_VERSION = "0.2.0";
 
 export const StrategicBoardLoopState = defineResource("strategicBoard.loop.state");
 
@@ -13,7 +13,19 @@ export const StrategicEndTurnRequested = defineEvent("strategic.turn.end.request
 export const StrategicTurnEnded = defineEvent("strategic.turn.ended");
 export const StrategicIncomeCollected = defineEvent("strategic.income.collected");
 export const StrategicEventCardsDrawn = defineEvent("strategic.eventCards.drawn");
+export const StrategicWorldActionRequested = defineEvent("strategic.worldAction.requested");
+export const StrategicWorldActionSpent = defineEvent("strategic.worldAction.spent");
+export const StrategicRecruitRequested = defineEvent("strategic.recruit.requested");
+export const StrategicRecruitCompleted = defineEvent("strategic.recruit.completed");
 export const StrategicBoardCommandRejected = defineEvent("strategic.command.rejected");
+
+const DEFAULT_MAX_WORLD_ACTIONS = 2;
+
+const UNIT_TYPES = {
+  light: { label: "Light", soldiers: 24, cost: 30 },
+  medium: { label: "Medium", soldiers: 42, cost: 55 },
+  heavy: { label: "Heavy", soldiers: 64, cost: 80 }
+};
 
 const DEFAULT_REGIONS = [
   { id: "gallia", label: "Gallia", owner: "blue", income: 8 },
@@ -82,6 +94,7 @@ function createRegions(configRegions = DEFAULT_REGIONS) {
 }
 
 function createInitialState(config = {}) {
+  const maxWorldActions = Number(config.maxWorldActions ?? DEFAULT_MAX_WORLD_ACTIONS);
   return {
     id: "strategic-board-game-loop",
     version: STRATEGIC_BOARD_GAME_LOOP_KIT_VERSION,
@@ -89,8 +102,13 @@ function createInitialState(config = {}) {
     phase: "planning",
     activeFaction: config.activeFaction ?? "rome",
     gold: Number(config.startingGold ?? 120),
+    maxWorldActions,
+    worldActionsRemaining: maxWorldActions,
     regions: createRegions(config.regions),
+    unitTypes: clone(config.unitTypes ?? UNIT_TYPES),
     lastIncome: null,
+    lastAction: null,
+    lastRecruit: null,
     lastEventCards: [],
     pendingEventCards: [],
     eventDeck: clone(config.eventCards ?? DEFAULT_EVENT_CARDS),
@@ -99,9 +117,22 @@ function createInitialState(config = {}) {
       turnsEnded: 0,
       incomeCollections: 0,
       cardsDrawn: 0,
+      worldActionsSpent: 0,
+      recruitsCompleted: 0,
       rejectedCommands: 0
     }
   };
+}
+
+function reject(world, state, reason, command = "strategic") {
+  state.diagnostics.rejectedCommands += 1;
+  appendLog(state, makeLogEntry(world, reason, "reject"));
+  world.emit(StrategicBoardCommandRejected, { command, reason });
+}
+
+function ownedRegion(state, regionId) {
+  const region = state.regions[regionId];
+  return region && region.owner === state.activeFaction;
 }
 
 function collectIncome(world, state) {
@@ -114,19 +145,18 @@ function collectIncome(world, state) {
     }));
   const total = entries.reduce((sum, entry) => sum + entry.amount, 0);
   state.gold += total;
-  state.lastIncome = {
-    turn: state.turn,
-    faction: state.activeFaction,
-    total,
-    entries
-  };
+  state.lastIncome = { turn: state.turn, faction: state.activeFaction, total, entries };
   state.diagnostics.incomeCollections += 1;
   appendLog(state, makeLogEntry(world, `Collected ${total} gold from ${entries.length} owned provinces.`, "income"));
   world.emit(StrategicIncomeCollected, state.lastIncome);
 }
 
+function cavalryCampaign(engine) {
+  return engine.cavalry?.getState?.()?.campaign;
+}
+
 function armyGroupsFromEngine(engine) {
-  const campaign = engine.cavalry?.getState?.()?.campaign;
+  const campaign = cavalryCampaign(engine);
   if (!campaign?.units) return [];
   const groups = [];
   for (const unit of campaign.units) {
@@ -154,6 +184,99 @@ function armyGroupsFromEngine(engine) {
   return groups;
 }
 
+function summarizeCampaign(campaign) {
+  const armies = Object.fromEntries(Object.values(campaign.regions ?? {}).map((region) => [
+    region.id,
+    { regionId: region.id, owner: region.owner, units: { light: 0, medium: 0, heavy: 0 }, unitIds: [] }
+  ]));
+  for (const unit of campaign.units ?? []) {
+    if (unit.status !== "garrison" || !unit.regionId || !armies[unit.regionId]) continue;
+    armies[unit.regionId].units[unit.unitType] = Number(armies[unit.regionId].units[unit.unitType] ?? 0) + 1;
+    armies[unit.regionId].unitIds.push(unit.id);
+  }
+  campaign.armies = armies;
+  campaign.selectedUnits = (campaign.units ?? []).filter((unit) => (campaign.selectedUnitIds ?? []).includes(unit.id));
+}
+
+function addUnitsToCampaign(world, engine, state, { regionId, unitType, count }) {
+  const cavalryState = clone(engine.cavalry?.getState?.());
+  const campaign = cavalryState?.campaign;
+  const unitConfig = state.unitTypes[unitType];
+  if (!campaign || !unitConfig) return false;
+  let serial = Math.max(0, ...(campaign.units ?? []).map((unit) => Number(unit.serial ?? 0))) + 1;
+  for (let i = 0; i < count; i += 1) {
+    const existingTypeCount = campaign.units.filter((unit) => unit.regionId === regionId && unit.unitType === unitType).length + 1;
+    campaign.units.push({
+      id: `${regionId}-${unitType}-crafted-${serial}`,
+      serial,
+      label: `${unitConfig.label} ${existingTypeCount}`,
+      unitType,
+      soldiers: unitConfig.soldiers,
+      maxSoldiers: unitConfig.soldiers,
+      owner: state.activeFaction,
+      regionId,
+      status: "garrison",
+      marchId: null,
+      experience: 0,
+      craftedAtTurn: state.turn
+    });
+    serial += 1;
+  }
+  summarizeCampaign(campaign);
+  world.setResource("cavalryOfRome.state", cavalryState);
+  return true;
+}
+
+function spendWorldAction(world, state, actionType, detail = {}) {
+  if (state.phase !== "planning") {
+    reject(world, state, `Cannot spend action during ${state.phase}.`, actionType);
+    return false;
+  }
+  if (state.worldActionsRemaining <= 0) {
+    reject(world, state, "No world actions remain this turn.", actionType);
+    return false;
+  }
+  state.worldActionsRemaining -= 1;
+  state.diagnostics.worldActionsSpent += 1;
+  state.lastAction = { turn: state.turn, actionType, detail, remaining: state.worldActionsRemaining };
+  appendLog(state, makeLogEntry(world, `${actionType} action spent. ${state.worldActionsRemaining} actions remain.`, "action"));
+  world.emit(StrategicWorldActionSpent, state.lastAction);
+  return true;
+}
+
+function resolveRecruit(world, state, engine, event) {
+  const regionId = event.regionId;
+  const unitType = event.unitType;
+  const count = Math.max(1, Math.min(20, Math.floor(Number(event.count ?? 1))));
+  const unitConfig = state.unitTypes[unitType];
+  if (!ownedRegion(state, regionId)) {
+    reject(world, state, "Recruitment is only allowed in owned red provinces.", "recruit");
+    return;
+  }
+  if (!unitConfig) {
+    reject(world, state, `Unknown unit type: ${unitType}`, "recruit");
+    return;
+  }
+  const totalCost = Number(unitConfig.cost ?? 0) * count;
+  if (state.gold < totalCost) {
+    reject(world, state, `Need ${totalCost} gold to craft ${count} ${unitConfig.label} units.`, "recruit");
+    return;
+  }
+  if (!spendWorldAction(world, state, "recruit", { regionId, unitType, count, totalCost })) return;
+  state.gold -= totalCost;
+  const added = addUnitsToCampaign(world, engine, state, { regionId, unitType, count });
+  if (!added) {
+    state.gold += totalCost;
+    state.worldActionsRemaining += 1;
+    reject(world, state, "Could not add recruited units to the campaign.", "recruit");
+    return;
+  }
+  state.lastRecruit = { turn: state.turn, regionId, unitType, count, totalCost, gold: state.gold };
+  state.diagnostics.recruitsCompleted += count;
+  appendLog(state, makeLogEntry(world, `Crafted ${count} ${unitConfig.label} unit groups for ${totalCost} gold.`, "recruit"));
+  world.emit(StrategicRecruitCompleted, state.lastRecruit);
+}
+
 function drawArmyEventCards(world, state, engine) {
   const armyGroups = armyGroupsFromEngine(engine).filter((group) => group.owner === state.activeFaction);
   const cards = [];
@@ -178,12 +301,6 @@ function drawArmyEventCards(world, state, engine) {
   world.emit(StrategicEventCardsDrawn, { turn: state.turn, cards });
 }
 
-function reject(world, state, reason, command = "strategic") {
-  state.diagnostics.rejectedCommands += 1;
-  appendLog(state, makeLogEntry(world, reason, "reject"));
-  world.emit(StrategicBoardCommandRejected, { command, reason });
-}
-
 function resolveEndTurn(world, state, engine) {
   if (state.phase !== "planning") {
     reject(world, state, `Cannot end turn while phase is ${state.phase}.`, "endTurn");
@@ -197,8 +314,9 @@ function resolveEndTurn(world, state, engine) {
   world.emit(StrategicTurnEnded, { turn: state.turn, gold: state.gold });
   state.turn += 1;
   state.phase = "planning";
+  state.worldActionsRemaining = state.maxWorldActions;
   appendLog(state, makeLogEntry(world, `Turn ${state.turn} begins.`, "turn"));
-  world.emit(StrategicTurnStarted, { turn: state.turn, phase: state.phase, gold: state.gold });
+  world.emit(StrategicTurnStarted, { turn: state.turn, phase: state.phase, gold: state.gold, worldActionsRemaining: state.worldActionsRemaining });
 }
 
 export function createStrategicBoardGameLoopKit(config = {}) {
@@ -206,6 +324,16 @@ export function createStrategicBoardGameLoopKit(config = {}) {
     const previous = world.getResource(StrategicBoardLoopState);
     if (!previous) return;
     const state = clone(previous);
+
+    for (const event of world.readEvents(StrategicWorldActionRequested)) {
+      spendWorldAction(world, state, event.actionType ?? "world", event.detail ?? {});
+      state.lastCommand = event.type;
+    }
+
+    for (const event of world.readEvents(StrategicRecruitRequested)) {
+      resolveRecruit(world, state, engine, event);
+      state.lastCommand = event.type;
+    }
 
     for (const event of world.readEvents(StrategicEndTurnRequested)) {
       resolveEndTurn(world, state, engine);
@@ -225,6 +353,10 @@ export function createStrategicBoardGameLoopKit(config = {}) {
       StrategicTurnEnded,
       StrategicIncomeCollected,
       StrategicEventCardsDrawn,
+      StrategicWorldActionRequested,
+      StrategicWorldActionSpent,
+      StrategicRecruitRequested,
+      StrategicRecruitCompleted,
       StrategicBoardCommandRejected
     },
     systems: [
@@ -237,7 +369,7 @@ export function createStrategicBoardGameLoopKit(config = {}) {
     initWorld({ world }) {
       const state = createInitialState(config);
       world.setResource(StrategicBoardLoopState, state);
-      world.emit(StrategicTurnStarted, { turn: state.turn, phase: state.phase, gold: state.gold });
+      world.emit(StrategicTurnStarted, { turn: state.turn, phase: state.phase, gold: state.gold, worldActionsRemaining: state.worldActionsRemaining });
     },
     install({ engine, world }) {
       engine.strategy = {
@@ -248,6 +380,21 @@ export function createStrategicBoardGameLoopKit(config = {}) {
           world.emit(StrategicEndTurnRequested, {});
           return world.getResource(StrategicBoardLoopState);
         },
+        spendWorldAction(actionType, detail = {}) {
+          world.emit(StrategicWorldActionRequested, { actionType, detail });
+          return world.getResource(StrategicBoardLoopState);
+        },
+        recruitUnit(regionId, unitType, count = 1) {
+          world.emit(StrategicRecruitRequested, { regionId, unitType, count });
+          return world.getResource(StrategicBoardLoopState);
+        },
+        canUseOwnedProvince(regionId) {
+          const state = world.getResource(StrategicBoardLoopState);
+          return Boolean(state?.regions?.[regionId]?.owner === state.activeFaction);
+        },
+        getUnitCosts() {
+          return clone(world.getResource(StrategicBoardLoopState)?.unitTypes ?? UNIT_TYPES);
+        },
         getGold() {
           return world.getResource(StrategicBoardLoopState)?.gold ?? 0;
         },
@@ -257,15 +404,18 @@ export function createStrategicBoardGameLoopKit(config = {}) {
         getTurn() {
           return world.getResource(StrategicBoardLoopState)?.turn ?? 0;
         },
+        getWorldActionsRemaining() {
+          return world.getResource(StrategicBoardLoopState)?.worldActionsRemaining ?? 0;
+        },
         formatStatus() {
           const state = world.getResource(StrategicBoardLoopState);
-          return `turn ${state.turn} | ${state.phase} | gold ${state.gold}`;
+          return `turn ${state.turn} | ${state.phase} | gold ${state.gold} | actions ${state.worldActionsRemaining}/${state.maxWorldActions}`;
         }
       };
     },
     metadata: {
       title: "Strategic Board Game Loop Kit",
-      purpose: "Owns the high-level turn loop, gold income, and army event-card draw cycle for strategic board games.",
+      purpose: "Owns turn phase, world action budget, gold income, recruitment, and army event-card draw cycle for strategic board games.",
       version: STRATEGIC_BOARD_GAME_LOOP_KIT_VERSION
     }
   });
