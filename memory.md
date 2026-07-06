@@ -67,3 +67,5 @@
 - Finding: The app routes through visual-upgrade-renderer.js. Biomes are applied by recoloring the terrain vertex color buffer, fog is reduced, lake UV tiling is denser, bridge correction remains active, and the runtime marker is natural-terrain-biome-color-pass-7.
 - Intent: Make monuments and roads authored into terrain/materials instead of extra visual overlays.
 - Finding: visual-upgrade-renderer.js now removes old monument terrace meshes, carves flat feathered temple/castle/palace sites directly into the terrain vertex positions under major structures, recomputes terrain normals, recolors biomes after carving, and converts all road/path ribbons to rich cobblestone materials with procedural shading. Runtime marker: terrain-carved-temples-cobblestone-roads-pass-8.
+- Intent: Begin gameplay systems using Domain Service Kit architecture.
+- Finding: Added strategic-board-game-loop-kit.js as a standalone DSK for turn number, planning/income/events phases, gold income from owned provinces, weighted event-card draws per army group, and engine.strategy API methods. main.js now installs it next to cavalry-of-rome-kit.
