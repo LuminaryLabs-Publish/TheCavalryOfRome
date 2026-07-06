@@ -4,6 +4,7 @@ import { createStrategicBoardGameLoopKit } from "./strategic-board-game-loop-kit
 import { cavalryOfRomeLevel01 } from "./level-01.js";
 import { createInputAdapter } from "./input-adapter.js";
 import { createRenderer } from "./visual-upgrade-renderer.js";
+import { createStrategicCommandUi } from "./strategic-command-ui.js";
 
 const canvas = document.querySelector("#game");
 const errorPanel = document.querySelector("#errorPanel");
@@ -22,13 +23,15 @@ async function boot() {
       createCavalryOfRomeKit({ level: cavalryOfRomeLevel01 }),
       createStrategicBoardGameLoopKit({
         activeFaction: "rome",
-        startingGold: 120
+        startingGold: 120,
+        maxWorldActions: 2
       })
     ]
   });
 
   const renderer = await createRenderer(canvas);
   const input = createInputAdapter({ canvas, renderer, engine });
+  const strategicCommandUi = createStrategicCommandUi({ canvas, renderer, engine });
 
   let running = true;
   let last = performance.now();
@@ -36,6 +39,7 @@ async function boot() {
   function tick(dt) {
     input.flush();
     engine.tick(dt);
+    strategicCommandUi.update();
     renderer.draw(engine.cavalry.getState());
   }
 
@@ -51,6 +55,7 @@ async function boot() {
     engine,
     renderer,
     input,
+    strategicCommandUi,
     tick,
     stop() {
       running = false;
