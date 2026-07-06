@@ -1,5 +1,6 @@
 import { createRealtimeGame } from "./runtime.js";
 import { createCavalryOfRomeKit } from "./cavalry-of-rome-kit.js";
+import { createStrategicBoardGameLoopKit } from "./strategic-board-game-loop-kit.js";
 import { cavalryOfRomeLevel01 } from "./level-01.js";
 import { createInputAdapter } from "./input-adapter.js";
 import { createRenderer } from "./visual-upgrade-renderer.js";
@@ -18,7 +19,11 @@ async function boot() {
 
   const engine = createRealtimeGame({
     kits: [
-      createCavalryOfRomeKit({ level: cavalryOfRomeLevel01 })
+      createCavalryOfRomeKit({ level: cavalryOfRomeLevel01 }),
+      createStrategicBoardGameLoopKit({
+        activeFaction: "rome",
+        startingGold: 120
+      })
     ]
   });
 
@@ -58,6 +63,14 @@ async function boot() {
     },
     getState() {
       return engine.cavalry.getState();
+    },
+    getStrategicState() {
+      return engine.strategy.getState();
+    },
+    endTurn() {
+      engine.strategy.endTurn();
+      tick(1 / 60);
+      return engine.strategy.getState();
     }
   };
 
