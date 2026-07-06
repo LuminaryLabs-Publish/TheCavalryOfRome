@@ -11,17 +11,18 @@ export function createInputAdapter({ canvas, renderer, engine }) {
 
     const hit = renderer.pick(event);
 
-    if (hit?.type === "army") {
-      renderer.selectArmy?.(hit);
-      enqueue({ type: "selectArmy", regionId: hit.regionId, unitType: hit.unitType });
+    if (hit?.type === "unit" || hit?.type === "army") {
+      const append = Boolean(event.shiftKey);
+      renderer.selectUnit?.(hit, append) ?? renderer.selectArmy?.(hit, append);
+      enqueue({ type: "selectUnit", unitId: hit.unitId ?? hit.armyId, append });
       return;
     }
 
     if (hit?.type === "region") {
-      const selectedArmy = renderer.getSelectedArmy?.();
-      if (selectedArmy) {
-        enqueue({ type: "moveArmy", targetRegionId: hit.regionId });
-        renderer.clearSelectedArmy?.();
+      const selectedUnitIds = renderer.getSelectedUnitIds?.() ?? renderer.getSelectedArmy?.()?.selectedUnitIds ?? [];
+      if (selectedUnitIds.length > 0) {
+        enqueue({ type: "moveUnits", targetRegionId: hit.regionId });
+        renderer.clearSelectedUnits?.() ?? renderer.clearSelectedArmy?.();
       } else {
         renderer.selectRegion(hit.regionId);
       }
@@ -48,7 +49,7 @@ export function createInputAdapter({ canvas, renderer, engine }) {
     if (!cameraFlightActive && key === "a") enqueue({ type: "selectLane", laneId: "left" });
     if (!cameraFlightActive && key === "s") enqueue({ type: "selectLane", laneId: "center" });
     if (!cameraFlightActive && key === "d") enqueue({ type: "selectLane", laneId: "right" });
-    if (key === "escape") renderer.clearSelectedArmy?.();
+    if (key === "escape") renderer.clearSelectedUnits?.() ?? renderer.clearSelectedArmy?.();
     if (key === " ") enqueue({ type: "charge" });
     if (key === "r") enqueue({ type: "rally" });
     if (key === "n") enqueue({ type: "restart" });
@@ -67,7 +68,9 @@ export function createInputAdapter({ canvas, renderer, engine }) {
       const action = pending.shift();
       if (action.type === "formation") engine.cavalry.setFormation(action.formation);
       if (action.type === "selectLane") engine.cavalry.selectLane(action.laneId);
+      if (action.type === "selectUnit") engine.cavalry.selectUnit(action.unitId, action.append);
       if (action.type === "selectArmy") engine.cavalry.selectArmy(action.regionId, action.unitType);
+      if (action.type === "moveUnits") engine.cavalry.moveUnits(action.targetRegionId);
       if (action.type === "moveArmy") engine.cavalry.moveArmy(action.targetRegionId);
       if (action.type === "charge") engine.cavalry.charge();
       if (action.type === "rally") engine.cavalry.rally();
