@@ -12,16 +12,7 @@ function el(tag, className, text = "") {
 function consumeUiEvent(event) {
   event.preventDefault();
   event.stopPropagation();
-}
-
-function bindButton(button, handler) {
-  button.addEventListener("pointerdown", (event) => {
-    consumeUiEvent(event);
-    if (!button.disabled) handler(event);
-  });
-  button.addEventListener("mousedown", consumeUiEvent);
-  button.addEventListener("mouseup", consumeUiEvent);
-  button.addEventListener("click", consumeUiEvent);
+  event.stopImmediatePropagation?.();
 }
 
 function injectStyles() {
@@ -33,7 +24,7 @@ function injectStyles() {
       position: fixed;
       right: 22px;
       bottom: 22px;
-      z-index: 30;
+      z-index: 2147483647;
       width: 360px;
       min-height: 318px;
       box-sizing: border-box;
@@ -77,6 +68,7 @@ function injectStyles() {
       letter-spacing: 0.04em;
       cursor: pointer;
       touch-action: manipulation;
+      pointer-events: auto;
     }
     .strategic-command-button:hover { background: rgba(154, 107, 54, 0.62); }
     .strategic-command-button.active { background: rgba(151, 36, 30, 0.66); border-color: rgba(255, 207, 132, 0.7); }
@@ -127,35 +119,34 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
   const footer = el("div", "strategic-command-footer");
   const actionButton = el("button", "strategic-command-button", "Prepare March");
 
+  close.dataset.commandAction = "close";
+  marchTab.dataset.commandAction = "mode";
+  marchTab.dataset.mode = "march";
+  recruitTab.dataset.commandAction = "mode";
+  recruitTab.dataset.mode = "recruit";
+  actionButton.dataset.commandAction = "commit";
+
   tabs.append(marchTab, recruitTab);
   footer.append(actionButton, note);
   panel.append(close, title, meta, tabs, section, footer);
   document.body.append(panel);
-
-  for (const eventName of ["pointerdown", "mousedown", "mouseup", "click", "dblclick", "wheel"]) {
-    panel.addEventListener(eventName, (event) => event.stopPropagation());
-  }
 
   let selectedRegion = null;
   let mode = "march";
   let draft = emptyDraft();
   let lastRenderKey = "";
 
-  function strategyState() {
-    return engine.strategy?.getState?.();
-  }
-
-  function campaignState() {
-    return engine.cavalry?.getState?.()?.campaign;
-  }
-
+  function strategyState() { return engine.strategy?.getState?.(); }
+  function campaignState() { return engine.cavalry?.getState?.()?.campaign; }
   function currentRegionState() {
     const state = strategyState();
     return selectedRegion ? state?.regions?.[selectedRegion.regionId] : null;
   }
-
-  function clearDraft() {
-    draft = emptyDraft();
+  function clearDraft() { draft = emptyDraft(); }
+  function selectedTotal() { return UNIT_ORDER.reduce((sum, unitType) => sum + Number(draft[unitType] ?? 0), 0); }
+  function draftCost() {
+    const costs = engine.strategy?.getUnitCosts?.() ?? {};
+    return UNIT_ORDER.reduce((sum, unitType) => sum + Number(draft[unitType] ?? 0) * Number(costs[unitType]?.cost ?? 0), 0);
   }
 
   function setMode(nextMode) {
@@ -184,10 +175,7 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
   }
 
   function setCount(unitType, value, available) {
-    draft = {
-      ...draft,
-      [unitType]: Math.max(0, Math.min(available, value))
-    };
+    draft = { ...draft, [unitType]: Math.max(0, Math.min(available, value)) };
     lastRenderKey = "";
     render(true);
   }
@@ -196,48 +184,32 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
     setCount(unitType, Number(draft[unitType] ?? 0) + delta, available);
   }
 
-  function selectedTotal() {
-    return UNIT_ORDER.reduce((sum, unitType) => sum + Number(draft[unitType] ?? 0), 0);
-  }
-
-  function draftCost() {
-    const costs = engine.strategy?.getUnitCosts?.() ?? {};
-    return UNIT_ORDER.reduce((sum, unitType) => sum + Number(draft[unitType] ?? 0) * Number(costs[unitType]?.cost ?? 0), 0);
-  }
-
   function renderKey(state, counts) {
-    return JSON.stringify({
-      regionId: selectedRegion?.regionId,
-      mode,
-      draft,
-      counts,
-      turn: state?.turn,
-      phase: state?.phase,
-      gold: state?.gold,
-      actions: state?.worldActionsRemaining,
-      maxActions: state?.maxWorldActions
-    });
+    return JSON.stringify({ regionId: selectedRegion?.regionId, mode, draft, counts, turn: state?.turn, phase: state?.phase, gold: state?.gold, actions: state?.worldActionsRemaining, maxActions: state?.maxWorldActions });
   }
 
   function renderRows(counts) {
     section.replaceChildren();
     const costs = engine.strategy?.getUnitCosts?.() ?? {};
-
     for (const unitType of UNIT_ORDER) {
       const row = el("div", "strategic-unit-row");
       const label = el("div", "strategic-unit-name", UNIT_LABELS[unitType]);
-      const availableText = mode === "march"
-        ? `Available ${counts[unitType] ?? 0}`
-        : `${costs[unitType]?.cost ?? 0} gold each`;
       const available = mode === "march" ? counts[unitType] ?? 0 : 99;
+      const availableText = mode === "march" ? `Available ${available}` : `${costs[unitType]?.cost ?? 0} gold each`;
       const availableNode = el("div", "strategic-unit-count", availableText);
       const count = el("div", "strategic-count-box", String(draft[unitType] ?? 0));
       const minus = el("button", "strategic-command-button", "−");
       const plus = el("button", "strategic-command-button", "+");
+      minus.dataset.commandAction = "count";
+      minus.dataset.unitType = unitType;
+      minus.dataset.delta = "-1";
+      minus.dataset.available = String(available);
+      plus.dataset.commandAction = "count";
+      plus.dataset.unitType = unitType;
+      plus.dataset.delta = "1";
+      plus.dataset.available = String(available);
       minus.disabled = Number(draft[unitType] ?? 0) <= 0;
       plus.disabled = mode === "march" && Number(draft[unitType] ?? 0) >= available;
-      bindButton(minus, () => addCount(unitType, -1, available));
-      bindButton(plus, () => addCount(unitType, 1, available));
       row.append(label, availableNode, count, minus, plus);
       section.append(row);
     }
@@ -251,21 +223,15 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
     const key = renderKey(state, counts);
     if (!force && key === lastRenderKey) return;
     lastRenderKey = key;
-
     const region = currentRegionState();
     const total = selectedTotal();
     const cost = draftCost();
     title.textContent = `${region?.label ?? selectedRegion.regionLabel ?? selectedRegion.regionId} Command`;
-    meta.innerHTML = [
-      `Red province · Turn ${state.turn} · ${state.phase}`,
-      `Gold ${state.gold} · World actions ${state.worldActionsRemaining}/${state.maxWorldActions}`
-    ].join("<br>");
+    meta.innerHTML = [`Red province · Turn ${state.turn} · ${state.phase}`, `Gold ${state.gold} · World actions ${state.worldActionsRemaining}/${state.maxWorldActions}`].join("<br>");
     renderRows(counts);
     actionButton.textContent = mode === "march" ? "Prepare March" : `Craft Troops${cost > 0 ? ` · ${cost} Gold` : ""}`;
     actionButton.disabled = total <= 0 || state.worldActionsRemaining <= 0 || (mode === "recruit" && cost > state.gold);
-    note.textContent = mode === "march"
-      ? "Use + / − to choose groups, then prepare the march and click a destination province."
-      : "Use + / − to craft unit groups. Crafting spends gold and one world action.";
+    note.textContent = mode === "march" ? "Use + / − to choose groups, then prepare the march and click a destination province." : "Use + / − to craft unit groups. Crafting spends gold and one world action.";
   }
 
   function prepareMarch() {
@@ -275,20 +241,9 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
     const units = [];
     for (const unitType of UNIT_ORDER) units.push(...unitsFor(campaign, selectedRegion.regionId, unitType, draft[unitType]));
     if (units.length <= 0) return;
-
     engine.strategy.spendWorldAction("march", { regionId: selectedRegion.regionId, counts: { ...draft } });
     units.forEach((unit, index) => {
-      const hit = {
-        unitId: unit.id,
-        armyId: unit.id,
-        regionId: unit.regionId,
-        regionLabel: selectedRegion.label,
-        unitType: unit.unitType,
-        unitLabel: UNIT_LABELS[unit.unitType],
-        soldiers: unit.soldiers,
-        owner: unit.owner,
-        label: unit.label
-      };
+      const hit = { unitId: unit.id, armyId: unit.id, regionId: unit.regionId, regionLabel: selectedRegion.label, unitType: unit.unitType, unitLabel: UNIT_LABELS[unit.unitType], soldiers: unit.soldiers, owner: unit.owner, label: unit.label };
       renderer.selectUnit?.(hit, index > 0);
       engine.cavalry.selectUnit(unit.id, index > 0);
     });
@@ -301,9 +256,8 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
   function craftTroops() {
     const state = strategyState();
     if (!selectedRegion || !state || state.worldActionsRemaining <= 0 || selectedTotal() <= 0) return;
-    if (engine.strategy.recruitUnits) {
-      engine.strategy.recruitUnits(selectedRegion.regionId, { ...draft });
-    } else {
+    if (engine.strategy.recruitUnits) engine.strategy.recruitUnits(selectedRegion.regionId, { ...draft });
+    else {
       const firstType = UNIT_ORDER.find((unitType) => draft[unitType] > 0);
       if (firstType) engine.strategy.recruitUnit(selectedRegion.regionId, firstType, draft[firstType]);
     }
@@ -313,28 +267,37 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
     render(true);
   }
 
-  bindButton(actionButton, () => {
-    if (mode === "march") prepareMarch();
-    else craftTroops();
-  });
-  bindButton(close, () => {
-    selectedRegion = null;
-    panel.classList.remove("visible");
-    lastRenderKey = "";
-  });
-  bindButton(marchTab, () => setMode("march"));
-  bindButton(recruitTab, () => setMode("recruit"));
+  function handleCommand(event) {
+    const button = event.target.closest?.("button[data-command-action]");
+    if (!button || !panel.contains(button)) return;
+    consumeUiEvent(event);
+    if (button.disabled) return;
+    const action = button.dataset.commandAction;
+    if (action === "count") {
+      addCount(button.dataset.unitType, Number(button.dataset.delta ?? 0), Number(button.dataset.available ?? 0));
+    } else if (action === "mode") {
+      setMode(button.dataset.mode);
+    } else if (action === "commit") {
+      if (mode === "march") prepareMarch();
+      else craftTroops();
+    } else if (action === "close") {
+      selectedRegion = null;
+      panel.classList.remove("visible");
+      lastRenderKey = "";
+    }
+  }
+
+  for (const eventName of ["pointerdown", "mousedown", "mouseup", "click", "dblclick", "wheel"]) {
+    panel.addEventListener(eventName, consumeUiEvent, true);
+  }
+  panel.addEventListener("pointerdown", handleCommand, true);
+  panel.addEventListener("click", handleCommand, true);
 
   canvas.addEventListener("click", (event) => {
     if (event.button !== 0 || renderer.isFlyMode?.()) return;
     setTimeout(() => {
       const region = renderer.getSelectedRegion?.();
-      if (region) showForRegion({
-        regionId: region.id,
-        regionLabel: region.label,
-        owner: region.owner,
-        ownerLabel: region.ownerLabel
-      });
+      if (region) showForRegion({ regionId: region.id, regionLabel: region.label, owner: region.owner, ownerLabel: region.ownerLabel });
       else render();
     }, 0);
   });
