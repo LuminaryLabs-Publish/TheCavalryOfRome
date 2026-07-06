@@ -22,6 +22,7 @@ const ROAD_PATHS = [
   { width: 11, kind: "cobble", points: [[1060, 520], [1420, 460], [1740, 120], [1970, -430], [2180, -1540]] },
   { width: 11, kind: "cobble", points: [[2180, -1540], [2460, -1040], [2720, -420], [2860, 310], [2500, 1820]] }
 ];
+const ROAD_MATERIAL_HEXES = new Set(["a8895a", "6d593d", "817666", "8b6842"]);
 
 function clamp(value, min, max) { return Math.max(min, Math.min(max, value)); }
 function smoothstep(edge0, edge1, x) { const t = clamp((x - edge0) / (edge1 - edge0), 0, 1); return t * t * (3 - 2 * t); }
@@ -41,16 +42,11 @@ function terrainHeight(x, z) {
 function terrainSlope(x, z) { return Math.abs(terrainHeight(x + 42, z) - terrainHeight(x - 42, z)) + Math.abs(terrainHeight(x, z + 42) - terrainHeight(x, z - 42)); }
 function terrainNoise(x, z) { return Math.sin(x * 0.0017 + z * 0.0023) * 0.5 + Math.cos(x * 0.0041 - z * 0.0019) * 0.32 + Math.sin((x + z) * 0.0061) * 0.18; }
 function ellipseMask(x, z, center, radiusX, radiusZ, rotation, inner = 0.58, outer = 1.12) {
-  const cx = center[0] * THEATER_SCALE;
-  const cz = center[1] * THEATER_SCALE;
-  const rx = radiusX * THEATER_SCALE;
-  const rz = radiusZ * THEATER_SCALE;
-  const cosR = Math.cos(-rotation);
-  const sinR = Math.sin(-rotation);
-  const dx = x - cx;
-  const dz = z - cz;
-  const lx = dx * cosR - dz * sinR;
-  const lz = dx * sinR + dz * cosR;
+  const cx = center[0] * THEATER_SCALE; const cz = center[1] * THEATER_SCALE;
+  const rx = radiusX * THEATER_SCALE; const rz = radiusZ * THEATER_SCALE;
+  const cosR = Math.cos(-rotation); const sinR = Math.sin(-rotation);
+  const dx = x - cx; const dz = z - cz;
+  const lx = dx * cosR - dz * sinR; const lz = dx * sinR + dz * cosR;
   const d = Math.sqrt((lx * lx) / (rx * rx) + (lz * lz) / (rz * rz));
   return 1 - smoothstep(inner, outer, d);
 }
@@ -59,22 +55,9 @@ function biomeColor(x, z, height) {
   const slope = terrainSlope(x, z);
   const heightT = clamp((height + 165) / 460, 0, 1);
   const base = new THREE.Color("#536f38").lerp(new THREE.Color("#7a7458"), heightT * 0.55).lerp(new THREE.Color("#293b28"), clamp(slope * 0.012, 0, 0.42));
-  const desert = Math.max(
-    ellipseMask(x, z, [-260, -1960], 1900, 1180, -0.12),
-    ellipseMask(x, z, [-2740, -1860], 1400, 840, 0.35),
-    smoothstep(-2800, -4600, z)
-  );
-  const tundra = Math.max(
-    ellipseMask(x, z, [-880, 1850], 1720, 880, 0.24),
-    ellipseMask(x, z, [-2260, 1360], 1180, 680, -0.38),
-    smoothstep(4200, 6500, z) * 0.75,
-    smoothstep(250, 430, height) * 0.65
-  );
-  const forest = Math.max(
-    ellipseMask(x, z, [1420, 460], 1650, 1050, 0.22),
-    ellipseMask(x, z, [2180, -1540], 1320, 860, -0.18),
-    (n > 0.24 ? 0.25 : 0)
-  );
+  const desert = Math.max(ellipseMask(x, z, [-260, -1960], 1900, 1180, -0.12), ellipseMask(x, z, [-2740, -1860], 1400, 840, 0.35), smoothstep(-2800, -4600, z));
+  const tundra = Math.max(ellipseMask(x, z, [-880, 1850], 1720, 880, 0.24), ellipseMask(x, z, [-2260, 1360], 1180, 680, -0.38), smoothstep(4200, 6500, z) * 0.75, smoothstep(250, 430, height) * 0.65);
+  const forest = Math.max(ellipseMask(x, z, [1420, 460], 1650, 1050, 0.22), ellipseMask(x, z, [2180, -1540], 1320, 860, -0.18), n > 0.24 ? 0.25 : 0);
   const desertColor = new THREE.Color("#b88645").lerp(new THREE.Color("#d1ad68"), clamp(n * 0.7 + 0.5, 0, 1)).lerp(new THREE.Color("#6f5b3b"), clamp(slope * 0.016, 0, 0.35));
   const tundraColor = new THREE.Color("#8fa198").lerp(new THREE.Color("#d6ddd6"), clamp(heightT * 0.75 + n * 0.14, 0, 1)).lerp(new THREE.Color("#67716b"), clamp(slope * 0.012, 0, 0.45));
   const forestColor = new THREE.Color("#253f28").lerp(new THREE.Color("#3f5b32"), clamp(n * 0.65 + 0.45, 0, 1)).lerp(new THREE.Color("#172618"), clamp(slope * 0.012, 0, 0.35));
@@ -89,16 +72,61 @@ function findTerrain(scene) {
   let best = null;
   scene.traverse((object) => {
     const pos = object.geometry?.attributes?.position;
-    const color = object.geometry?.attributes?.color;
-    if (!object.isMesh || !pos || !color) return;
+    if (!object.isMesh || !pos) return;
     if (!best || pos.count > best.geometry.attributes.position.count) best = object;
   });
   return best;
 }
-function recolorTerrain(scene) {
-  const oldOverlay = scene.getObjectByName("biome-diversity-overlays");
-  if (oldOverlay) { scene.remove(oldOverlay); disposeTree(oldOverlay); }
-  const terrain = findTerrain(scene);
+function disposeTree(object) {
+  object.traverse((child) => {
+    child.geometry?.dispose?.();
+    const materials = Array.isArray(child.material) ? child.material : child.material ? [child.material] : [];
+    for (const material of materials) material.dispose?.();
+  });
+}
+function removeOldTerraceMeshes(scene) {
+  for (const name of ["biome-diversity-overlays", "monument-carved-terraces"]) {
+    const old = scene.getObjectByName(name);
+    if (old) { scene.remove(old); disposeTree(old); }
+  }
+}
+function majorMonumentTargets(scene) {
+  const targets = [];
+  const center = new THREE.Vector3();
+  const size = new THREE.Vector3();
+  scene.traverse((object) => {
+    if (!object.isGroup || object.name.includes("water") || object.name.includes("army") || object.name.includes("unit") || object.name.includes("bridge")) return;
+    const box = new THREE.Box3().setFromObject(object);
+    if (box.isEmpty()) return;
+    box.getCenter(center); box.getSize(size);
+    const footprint = Math.max(size.x, size.z);
+    if (size.y < 80 || footprint < 105 || footprint > 1200) return;
+    targets.push({ x: center.x, z: center.z, y: box.min.y - 1.2, radius: clamp(footprint * 0.72, 145, 500), feather: clamp(footprint * 0.42, 80, 260) });
+  });
+  return targets;
+}
+function carveTempleTerrain(scene, terrain) {
+  if (!terrain || terrain.userData.templeTerrainCarved) return;
+  const targets = majorMonumentTargets(scene);
+  if (targets.length === 0) return;
+  const positions = terrain.geometry.attributes.position;
+  for (let i = 0; i < positions.count; i += 1) {
+    const x = positions.getX(i); const z = positions.getZ(i);
+    let y = positions.getY(i);
+    for (const target of targets) {
+      const d = Math.hypot(x - target.x, z - target.z);
+      if (d > target.radius + target.feather) continue;
+      const flatT = 1 - smoothstep(target.radius, target.radius + target.feather, d);
+      y = THREE.MathUtils.lerp(y, target.y, flatT);
+    }
+    positions.setY(i, y);
+  }
+  positions.needsUpdate = true;
+  terrain.geometry.computeVertexNormals();
+  terrain.userData.templeTerrainCarved = true;
+  scene.userData.templeTerrainCarveCount = targets.length;
+}
+function recolorTerrain(scene, terrain) {
   if (!terrain || terrain.userData.terrainBiomeRecolored) return;
   const positions = terrain.geometry.attributes.position;
   let colors = terrain.geometry.attributes.color;
@@ -108,13 +136,74 @@ function recolorTerrain(scene) {
   }
   const c = new THREE.Color();
   for (let i = 0; i < positions.count; i += 1) {
-    const x = positions.getX(i);
-    const z = positions.getZ(i);
-    c.copy(biomeColor(x, z, positions.getY(i)));
+    const x = positions.getX(i); const z = positions.getZ(i); const y = positions.getY(i);
+    c.copy(biomeColor(x, z, y));
     colors.setXYZ(i, c.r, c.g, c.b);
   }
   colors.needsUpdate = true;
   terrain.userData.terrainBiomeRecolored = true;
+}
+function createCobbleTexture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 256; canvas.height = 256;
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#6f6758"; ctx.fillRect(0, 0, 256, 256);
+  for (let y = 0; y < 256; y += 32) {
+    const offset = (y / 32) % 2 ? 16 : 0;
+    for (let x = -32; x < 256; x += 32) {
+      const shade = 84 + ((x * 13 + y * 7) % 42);
+      ctx.fillStyle = `rgb(${shade + 12},${shade + 4},${shade - 8})`;
+      ctx.fillRect(x + offset + 2, y + 2, 28, 28);
+      ctx.strokeStyle = "rgba(34,29,22,0.55)";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x + offset + 2, y + 2, 28, 28);
+      ctx.strokeStyle = "rgba(218,199,162,0.18)";
+      ctx.strokeRect(x + offset + 4, y + 4, 22, 22);
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping; texture.wrapT = THREE.RepeatWrapping;
+  texture.repeat.set(18, 18);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+function looksLikeRoadMaterial(material) {
+  const list = Array.isArray(material) ? material : material ? [material] : [];
+  return list.some((entry) => ROAD_MATERIAL_HEXES.has(entry?.color?.getHexString?.()));
+}
+function applyCobblestoneRoads(scene) {
+  if (scene.userData.cobblestoneRoadsApplied) return;
+  const cobbleTexture = createCobbleTexture();
+  scene.traverse((object) => {
+    if (!object.isMesh || !looksLikeRoadMaterial(object.material)) return;
+    const oldMaterial = object.material;
+    const material = new THREE.MeshStandardMaterial({
+      color: "#8b806c",
+      map: object.geometry?.attributes?.uv ? cobbleTexture : null,
+      bumpMap: object.geometry?.attributes?.uv ? cobbleTexture : null,
+      bumpScale: 2.2,
+      roughness: 0.96,
+      metalness: 0.0,
+      vertexColors: true,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -5
+    });
+    const positions = object.geometry.attributes.position;
+    const colors = new THREE.Float32BufferAttribute(new Float32Array(positions.count * 3), 3);
+    const c = new THREE.Color();
+    for (let i = 0; i < positions.count; i += 1) {
+      const x = positions.getX(i); const z = positions.getZ(i);
+      const cell = (Math.floor(x * 0.035) + Math.floor(z * 0.035)) % 3;
+      c.set(cell === 0 ? "#8f836e" : cell === 1 ? "#746b5b" : "#a09278");
+      colors.setXYZ(i, c.r, c.g, c.b);
+    }
+    object.geometry.setAttribute("color", colors);
+    object.material = material;
+    const oldList = Array.isArray(oldMaterial) ? oldMaterial : [oldMaterial];
+    for (const entry of oldList) entry?.dispose?.();
+  });
+  scene.userData.cobblestoneRoadsApplied = true;
 }
 function scaledPath(points, width) { const scaled = points.map(([x, z]) => ({ x: x * THEATER_SCALE, z: z * THEATER_SCALE })); return scaled.slice(1).map((point, index) => ({ a: scaled[index], b: point, width: width * THEATER_SCALE })); }
 function riverSegments() { return [...scaledPath(MAIN_RIVER_POINTS, 74), ...scaledPath(BRANCH_RIVER_POINTS, 34), ...EXTRA_RIVERS.flatMap((river) => scaledPath(river.points, river.width))]; }
@@ -130,7 +219,6 @@ function closestPointsOnSegments(a, b, c, d) {
   return { p, q, distance: Math.hypot(p.x - q.x, p.z - q.z), s, t };
 }
 function findWaterSystem(scene) { let water = null; scene.traverse((object) => { if (!water && object.userData?.rivers && object.userData?.lakes && object.userData?.waterMaterials) water = object; }); return water; }
-function disposeTree(object) { object.traverse((child) => { child.geometry?.dispose?.(); const materials = Array.isArray(child.material) ? child.material : child.material ? [child.material] : []; for (const material of materials) material.dispose?.(); }); }
 function tuneFogAndLighting(scene, renderer) {
   renderer.toneMappingExposure = 1.18;
   renderer.setClearColor?.("#789198", 1);
@@ -190,30 +278,19 @@ function addCorrectedBridges(scene) {
   }
   scene.add(group);
 }
-function addMonumentTerraces(scene) {
-  if (scene.getObjectByName("monument-carved-terraces")) return;
-  const group = new THREE.Group(); group.name = "monument-carved-terraces"; const center = new THREE.Vector3(); const size = new THREE.Vector3();
-  scene.traverse((object) => {
-    if (!object.isGroup || object.name.includes("water") || object.name.includes("army") || object.name.includes("unit")) return;
-    const box = new THREE.Box3().setFromObject(object); if (box.isEmpty()) return; box.getCenter(center); box.getSize(size);
-    const footprint = Math.max(size.x, size.z); if (size.y < 80 || footprint < 100 || footprint > 1200) return;
-    const radius = clamp(footprint * 0.75, 150, 500); const y = terrainHeight(center.x, center.z) + 8.5;
-    const geometry = new THREE.CylinderGeometry(radius, radius * 1.12, 9, 12);
-    const material = new THREE.MeshStandardMaterial({ color: "#8d744c", roughness: 0.96, metalness: 0.0, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -8 });
-    const pad = new THREE.Mesh(geometry, material); pad.name = "carved-monument-terrace"; pad.position.set(center.x, y, center.z); pad.rotation.y = object.rotation.y; pad.scale.z = 0.78; pad.receiveShadow = true; pad.renderOrder = 9; group.add(pad);
-  });
-  if (group.children.length > 0) scene.add(group);
-}
 function applyVisualUpgrades(scene, renderer) {
-  if (scene.userData.visualUpgradeAppliedNaturalTerrain) return;
+  if (scene.userData.visualUpgradeAppliedTempleRoadPass) return;
+  removeOldTerraceMeshes(scene);
   tuneFogAndLighting(scene, renderer.renderer ?? renderer);
-  recolorTerrain(scene);
+  const terrain = findTerrain(scene);
+  carveTempleTerrain(scene, terrain);
+  recolorTerrain(scene, terrain);
+  applyCobblestoneRoads(scene);
   densifyLakeWater(findWaterSystem(scene));
   hideOldProvinceForceCircles(scene);
   addCorrectedBridges(scene);
-  addMonumentTerraces(scene);
-  scene.userData.visualUpgradeAppliedNaturalTerrain = true;
-  scene.userData.waterSafetyVersion = "natural-terrain-biome-color-pass-7";
+  scene.userData.visualUpgradeAppliedTempleRoadPass = true;
+  scene.userData.waterSafetyVersion = "terrain-carved-temples-cobblestone-roads-pass-8";
 }
 
 export async function createRenderer(canvas) {
