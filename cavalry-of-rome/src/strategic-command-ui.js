@@ -15,12 +15,13 @@ function consumeUiEvent(event) {
 }
 
 function bindButton(button, handler) {
-  button.addEventListener("pointerdown", consumeUiEvent);
-  button.addEventListener("mousedown", consumeUiEvent);
-  button.addEventListener("click", (event) => {
+  button.addEventListener("pointerdown", (event) => {
     consumeUiEvent(event);
     if (!button.disabled) handler(event);
   });
+  button.addEventListener("mousedown", consumeUiEvent);
+  button.addEventListener("mouseup", consumeUiEvent);
+  button.addEventListener("click", consumeUiEvent);
 }
 
 function injectStyles() {
@@ -75,6 +76,7 @@ function injectStyles() {
       text-transform: uppercase;
       letter-spacing: 0.04em;
       cursor: pointer;
+      touch-action: manipulation;
     }
     .strategic-command-button:hover { background: rgba(154, 107, 54, 0.62); }
     .strategic-command-button.active { background: rgba(151, 36, 30, 0.66); border-color: rgba(255, 207, 132, 0.7); }
@@ -137,6 +139,7 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
   let selectedRegion = null;
   let mode = "march";
   let draft = emptyDraft();
+  let lastRenderKey = "";
 
   function strategyState() {
     return engine.strategy?.getState?.();
@@ -160,7 +163,8 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
     clearDraft();
     marchTab.classList.toggle("active", mode === "march");
     recruitTab.classList.toggle("active", mode === "recruit");
-    render();
+    lastRenderKey = "";
+    render(true);
   }
 
   function showForRegion(regionHit) {
@@ -169,12 +173,14 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
     if (!region || region.owner !== state.activeFaction) {
       selectedRegion = null;
       panel.classList.remove("visible");
+      lastRenderKey = "";
       return;
     }
     selectedRegion = { ...regionHit, ...region, regionId: regionHit.regionId ?? region.id };
     clearDraft();
     panel.classList.add("visible");
-    render();
+    lastRenderKey = "";
+    render(true);
   }
 
   function setCount(unitType, value, available) {
@@ -182,7 +188,8 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
       ...draft,
       [unitType]: Math.max(0, Math.min(available, value))
     };
-    render();
+    lastRenderKey = "";
+    render(true);
   }
 
   function addCount(unitType, delta, available) {
@@ -198,10 +205,22 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
     return UNIT_ORDER.reduce((sum, unitType) => sum + Number(draft[unitType] ?? 0) * Number(costs[unitType]?.cost ?? 0), 0);
   }
 
-  function renderRows() {
+  function renderKey(state, counts) {
+    return JSON.stringify({
+      regionId: selectedRegion?.regionId,
+      mode,
+      draft,
+      counts,
+      turn: state?.turn,
+      phase: state?.phase,
+      gold: state?.gold,
+      actions: state?.worldActionsRemaining,
+      maxActions: state?.maxWorldActions
+    });
+  }
+
+  function renderRows(counts) {
     section.replaceChildren();
-    const campaign = campaignState();
-    const counts = countUnits(campaign, selectedRegion?.regionId);
     const costs = engine.strategy?.getUnitCosts?.() ?? {};
 
     for (const unitType of UNIT_ORDER) {
@@ -224,9 +243,15 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
     }
   }
 
-  function render() {
+  function render(force = false) {
     const state = strategyState();
     if (!selectedRegion || !state) return;
+    const campaign = campaignState();
+    const counts = countUnits(campaign, selectedRegion?.regionId);
+    const key = renderKey(state, counts);
+    if (!force && key === lastRenderKey) return;
+    lastRenderKey = key;
+
     const region = currentRegionState();
     const total = selectedTotal();
     const cost = draftCost();
@@ -235,7 +260,7 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
       `Red province · Turn ${state.turn} · ${state.phase}`,
       `Gold ${state.gold} · World actions ${state.worldActionsRemaining}/${state.maxWorldActions}`
     ].join("<br>");
-    renderRows();
+    renderRows(counts);
     actionButton.textContent = mode === "march" ? "Prepare March" : `Craft Troops${cost > 0 ? ` · ${cost} Gold` : ""}`;
     actionButton.disabled = total <= 0 || state.worldActionsRemaining <= 0 || (mode === "recruit" && cost > state.gold);
     note.textContent = mode === "march"
@@ -268,8 +293,9 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
       engine.cavalry.selectUnit(unit.id, index > 0);
     });
     clearDraft();
+    lastRenderKey = "";
     note.textContent = "March prepared. Click a destination province to send the selected groups.";
-    render();
+    render(true);
   }
 
   function craftTroops() {
@@ -282,8 +308,9 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
       if (firstType) engine.strategy.recruitUnit(selectedRegion.regionId, firstType, draft[firstType]);
     }
     clearDraft();
+    lastRenderKey = "";
     note.textContent = "Recruitment ordered. The new unit groups will appear after the next tick.";
-    render();
+    render(true);
   }
 
   bindButton(actionButton, () => {
@@ -293,6 +320,7 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
   bindButton(close, () => {
     selectedRegion = null;
     panel.classList.remove("visible");
+    lastRenderKey = "";
   });
   bindButton(marchTab, () => setMode("march"));
   bindButton(recruitTab, () => setMode("recruit"));
@@ -312,7 +340,7 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
   });
 
   function update() {
-    if (panel.classList.contains("visible")) render();
+    if (panel.classList.contains("visible")) render(false);
   }
 
   return {
@@ -321,6 +349,7 @@ export function createStrategicCommandUi({ canvas, renderer, engine }) {
     hide() {
       selectedRegion = null;
       panel.classList.remove("visible");
+      lastRenderKey = "";
     }
   };
 }
