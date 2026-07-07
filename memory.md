@@ -72,4 +72,6 @@
 - Intent: Add province command popup and world-action budget.
 - Finding: strategic-board-game-loop-kit tracks two world actions per turn, exposes spending/recruitment APIs, deducts gold, and can add crafted unit groups into the campaign state.
 - Intent: Modularize the province command panel as UI Domain Service Kits.
-- Finding: Added control-button-kit.js, control-panel-kit.js, and province-command-panel-kit.js. main.js now uses province-command-panel-kit instead of the old strategic-command-ui path. Button clicks are routed through a reusable control-panel command delegate and control-button data attributes instead of per-button transient listeners.
+- Finding: Added control-button-kit.js, control-panel-kit.js, and province-command-panel-kit.js. main.js now uses province-command-panel-kit instead of the old strategic-command-ui path.
+- Intent: Replace fragile command panel buttons with map-first keyboard controls.
+- Finding: province-command-panel-kit is now a passive readout. Selecting an owned red province opens the panel; M/C switches March/Craft, number keys 1/2/3 add Light/Medium/Heavy groups, Shift+number subtracts, Enter confirms, and Esc cancels. March confirm prepares selected unit groups for a destination province click; Craft confirm queues recruitment through the strategic DSK.
