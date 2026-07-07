@@ -3,7 +3,7 @@ import {
   getControlButtonCommand
 } from "./control-button-kit.js";
 
-export const CONTROL_PANEL_KIT_VERSION = "0.1.0";
+export const CONTROL_PANEL_KIT_VERSION = "0.2.0";
 
 export function injectControlPanelStyles() {
   if (document.querySelector("#control-panel-kit-style")) return;
@@ -59,6 +59,8 @@ export function injectControlPanelStyles() {
       cursor: pointer;
       touch-action: manipulation;
       pointer-events: auto;
+      position: relative;
+      z-index: 1;
     }
     .strategic-command-button:hover { background: rgba(154, 107, 54, 0.62); }
     .strategic-command-button.active { background: rgba(151, 36, 30, 0.66); border-color: rgba(255, 207, 132, 0.7); }
@@ -81,15 +83,52 @@ export function createControlPanel({ className = "strategic-command-panel", onCo
   panel.className = className;
   panel.dataset.controlPanel = "true";
 
-  panel.addEventListener("pointerdown", (event) => {
-    const command = getControlButtonCommand(event, panel);
-    if (!command) return;
-    consumeControlButtonEvent(event);
-    if (!command.button.disabled) onCommand?.(command, event);
-  }, true);
+  let lastGestureKey = "";
+  let lastGestureAt = -1;
 
-  for (const eventName of ["mousedown", "mouseup", "click", "dblclick", "wheel"]) {
-    panel.addEventListener(eventName, consumeControlButtonEvent, true);
+  function dispatchCommand(event) {
+    const command = getControlButtonCommand(event, panel);
+    if (!command) return false;
+    consumeControlButtonEvent(event);
+    if (command.button.disabled) return true;
+
+    const now = Number(event.timeStamp ?? performance.now());
+    const gestureKey = [
+      command.action,
+      command.unitType ?? "",
+      command.delta ?? "",
+      command.mode ?? "",
+      command.button.textContent ?? ""
+    ].join(":");
+
+    if (gestureKey === lastGestureKey && now - lastGestureAt < 180) {
+      return true;
+    }
+
+    lastGestureKey = gestureKey;
+    lastGestureAt = now;
+    onCommand?.(command, event);
+    return true;
+  }
+
+  function captureEvent(event) {
+    if (!panel.classList.contains("visible")) return;
+    if (!panel.contains(event.target)) return;
+    dispatchCommand(event) || consumeControlButtonEvent(event);
+  }
+
+  for (const eventName of ["pointerdown", "mousedown", "click"]) {
+    panel.addEventListener(eventName, captureEvent, true);
+    document.addEventListener(eventName, captureEvent, true);
+  }
+
+  for (const eventName of ["mouseup", "dblclick", "wheel", "contextmenu"]) {
+    panel.addEventListener(eventName, (event) => {
+      if (panel.contains(event.target)) consumeControlButtonEvent(event);
+    }, true);
+    document.addEventListener(eventName, (event) => {
+      if (panel.classList.contains("visible") && panel.contains(event.target)) consumeControlButtonEvent(event);
+    }, true);
   }
 
   return {
@@ -99,6 +138,8 @@ export function createControlPanel({ className = "strategic-command-panel", onCo
     },
     hide() {
       panel.classList.remove("visible");
+      lastGestureKey = "";
+      lastGestureAt = -1;
     },
     isVisible() {
       return panel.classList.contains("visible");
