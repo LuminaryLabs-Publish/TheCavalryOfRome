@@ -87,6 +87,7 @@ export function createProvinceCommandPanelKit({ canvas, renderer, engine }) {
   }
 
   function showForRegion(regionHit) {
+    if (renderer.isEncounterActive?.()) return;
     const state = strategyState();
     const region = state?.regions?.[regionHit.regionId];
     if (!region || region.owner !== state.activeFaction) {
@@ -145,7 +146,7 @@ export function createProvinceCommandPanelKit({ canvas, renderer, engine }) {
 
   function prepareMarch() {
     const state = strategyState();
-    if (!selectedRegion || !state || state.worldActionsRemaining <= 0 || selectedTotal() <= 0) return;
+    if (renderer.isEncounterActive?.() || !selectedRegion || !state || state.worldActionsRemaining <= 0 || selectedTotal() <= 0) return;
     const campaign = campaignState();
     const units = [];
     for (const unitType of UNIT_ORDER) units.push(...unitsFor(campaign, selectedRegion.regionId, unitType, draft[unitType]));
@@ -164,7 +165,7 @@ export function createProvinceCommandPanelKit({ canvas, renderer, engine }) {
 
   function craftTroops() {
     const state = strategyState();
-    if (!selectedRegion || !state || state.worldActionsRemaining <= 0 || selectedTotal() <= 0) return;
+    if (renderer.isEncounterActive?.() || !selectedRegion || !state || state.worldActionsRemaining <= 0 || selectedTotal() <= 0) return;
     if (engine.strategy.recruitUnits) engine.strategy.recruitUnits(selectedRegion.regionId, { ...draft });
     else {
       const firstType = UNIT_ORDER.find((unitType) => draft[unitType] > 0);
@@ -193,24 +194,32 @@ export function createProvinceCommandPanelKit({ canvas, renderer, engine }) {
 
   canvas.addEventListener("click", (event) => {
     if (event.button !== 0 || renderer.isFlyMode?.()) return;
+    if (renderer.isEncounterActive?.()) return;
     setTimeout(() => {
+      if (renderer.isEncounterActive?.()) return;
       const region = renderer.getSelectedRegion?.();
       if (region) showForRegion({ regionId: region.id, regionLabel: region.label, owner: region.owner, ownerLabel: region.ownerLabel });
       else render();
     }, 0);
   });
 
+  function hide() {
+    selectedRegion = null;
+    controlPanel.hide();
+    lastRenderKey = "";
+  }
+
   function update() {
+    if (renderer.isEncounterActive?.()) {
+      hide();
+      return;
+    }
     if (controlPanel.isVisible()) render(false);
   }
 
   return {
     showForRegion,
     update,
-    hide() {
-      selectedRegion = null;
-      controlPanel.hide();
-      lastRenderKey = "";
-    }
+    hide
   };
 }

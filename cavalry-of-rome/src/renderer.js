@@ -2049,7 +2049,7 @@ function placeUprightOnTerrain(object, x, z, yaw = 0, offset = 0) {
   object.quaternion.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
 }
 
-function createSoldier({ armorMaterial, accentMaterial, skinMaterial, darkMaterial }) {
+function createSoldier({ armorMaterial, accentMaterial, skinMaterial, darkMaterial, weapon = "spear" }) {
   const group = new THREE.Group();
 
   const legs = [
@@ -2102,9 +2102,11 @@ function createSoldier({ armorMaterial, accentMaterial, skinMaterial, darkMateri
   shield.castShadow = true;
   group.add(shield);
 
-  const spear = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.55, 28, 5), darkMaterial);
-  spear.position.set(6.8, 18, 1);
-  spear.rotation.z = -0.18;
+  const spearLength = weapon === "javelin" ? 18 : 28;
+  const spearRadius = weapon === "javelin" ? 0.38 : 0.45;
+  const spear = new THREE.Mesh(new THREE.CylinderGeometry(spearRadius, spearRadius + 0.1, spearLength, 5), darkMaterial);
+  spear.position.set(weapon === "javelin" ? 5.8 : 6.8, weapon === "javelin" ? 16.8 : 18, 1);
+  spear.rotation.z = weapon === "javelin" ? -0.52 : -0.18;
   spear.castShadow = true;
   group.add(spear);
 
@@ -2172,6 +2174,262 @@ function createRider(material, accentMaterial) {
   group.add(shield);
 
   return group;
+}
+
+function disposeObject(object) {
+  object.traverse((child) => {
+    child.geometry?.dispose?.();
+    const materials = Array.isArray(child.material) ? child.material : child.material ? [child.material] : [];
+    for (const material of materials) material.dispose?.();
+  });
+}
+
+function terrainPoint(x, z, offset = 0) {
+  const y = terrainHeight(x, z);
+  return new THREE.Vector3(x, y + offset, z);
+}
+
+function encounterPalette(side) {
+  if (side === "attacker") {
+    return {
+      armorMaterial: new THREE.MeshStandardMaterial({ color: "#c73a2f", roughness: 0.56 }),
+      accentMaterial: new THREE.MeshStandardMaterial({ color: "#d8b45b", roughness: 0.42, metalness: 0.08 }),
+      skinMaterial: new THREE.MeshStandardMaterial({ color: "#b07b58", roughness: 0.7 }),
+      darkMaterial: new THREE.MeshStandardMaterial({ color: "#33261d", roughness: 0.84 })
+    };
+  }
+
+  return {
+    armorMaterial: new THREE.MeshStandardMaterial({ color: "#50626d", roughness: 0.62 }),
+    accentMaterial: new THREE.MeshStandardMaterial({ color: "#d2d6d8", roughness: 0.36, metalness: 0.1 }),
+    skinMaterial: new THREE.MeshStandardMaterial({ color: "#9f7860", roughness: 0.72 }),
+    darkMaterial: new THREE.MeshStandardMaterial({ color: "#23292c", roughness: 0.86 })
+  };
+}
+
+function encounterAxes(encounter) {
+  const bearing = Number(encounter.bearing ?? 0);
+  const forward = new THREE.Vector3(Math.cos(bearing), 0, Math.sin(bearing)).normalize();
+  const right = new THREE.Vector3(-forward.z, 0, forward.x).normalize();
+  return { forward, right };
+}
+
+function hexAxialToWorld(encounter, q, r, size) {
+  const { forward, right } = encounterAxes(encounter);
+  const localX = Math.sqrt(3) * size * (q + r / 2);
+  const localZ = 1.5 * size * r;
+  return {
+    x: encounter.center.x + right.x * localX + forward.x * localZ,
+    z: encounter.center.z + right.z * localX + forward.z * localZ
+  };
+}
+
+function createEncounterHexGrid(encounter) {
+  const group = new THREE.Group();
+  const radius = encounter.hex?.radius ?? 6;
+  const size = encounter.hex?.cellSize ?? 72;
+  const hexMaterial = new THREE.LineBasicMaterial({
+    color: encounter.kind === "arrival" ? "#e5d49a" : "#9bc1d0",
+    transparent: true,
+    opacity: 0.34,
+    depthWrite: false
+  });
+  const filledMaterial = new THREE.LineBasicMaterial({
+    color: encounter.kind === "arrival" ? "#f4e7b6" : "#b9d6e0",
+    transparent: true,
+    opacity: 0.12,
+    depthWrite: false
+  });
+
+  for (let q = -radius; q <= radius; q += 1) {
+    const rMin = Math.max(-radius, -q - radius);
+    const rMax = Math.min(radius, -q + radius);
+
+    for (let r = rMin; r <= rMax; r += 1) {
+      const world = hexAxialToWorld(encounter, q, r, size);
+      const edgePoints = [];
+      for (let side = 0; side < 6; side += 1) {
+        const angle = (Math.PI / 6) + side * (Math.PI / 3);
+        const x = world.x + Math.cos(angle) * size;
+        const z = world.z + Math.sin(angle) * size;
+        edgePoints.push(terrainPoint(x, z, 8));
+      }
+      edgePoints.push(edgePoints[0].clone());
+      const outlineGeometry = new THREE.BufferGeometry().setFromPoints(edgePoints);
+      const outline = new THREE.Line(outlineGeometry, hexMaterial.clone());
+      outline.renderOrder = 50;
+      group.add(outline);
+
+      const centerPoint = terrainPoint(world.x, world.z, 4);
+      const fillGeometry = new THREE.BufferGeometry().setFromPoints([
+        centerPoint.clone().add(new THREE.Vector3(-size * 0.4, 0, 0)),
+        centerPoint.clone().add(new THREE.Vector3(size * 0.4, 0, 0))
+      ]);
+      const fill = new THREE.Line(fillGeometry, filledMaterial.clone());
+      fill.renderOrder = 49;
+      group.add(fill);
+    }
+  }
+
+  return group;
+}
+
+function createOccupiedHexPlate(encounter, cell) {
+  const size = (encounter.board?.cellSize ?? encounter.hex?.cellSize ?? 72) * 0.82;
+  const world = hexAxialToWorld(encounter, cell.q, cell.r, encounter.board?.cellSize ?? encounter.hex?.cellSize ?? 72);
+  const points = [terrainPoint(world.x, world.z, 5.5)];
+  const vertices = [points[0].x, points[0].y, points[0].z];
+  const indices = [];
+  const { forward, right } = encounterAxes(encounter);
+
+  for (let side = 0; side < 6; side += 1) {
+    const angle = (Math.PI / 6) + side * (Math.PI / 3);
+    const localX = Math.cos(angle) * size;
+    const localZ = Math.sin(angle) * size;
+    const x = world.x + right.x * localX + forward.x * localZ;
+    const z = world.z + right.z * localX + forward.z * localZ;
+    const point = terrainPoint(x, z, 5.8);
+    vertices.push(point.x, point.y, point.z);
+    indices.push(0, side + 1, side === 5 ? 1 : side + 2);
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  const material = new THREE.MeshBasicMaterial({
+    color: cell.side === "attacker" ? "#b93125" : "#50626d",
+    transparent: true,
+    opacity: 0.28,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+  const plate = new THREE.Mesh(geometry, material);
+  plate.renderOrder = 52;
+  return plate;
+}
+
+function createEncounterUnitModel(unitGroup, side) {
+  const palette = encounterPalette(side);
+  const isHeavy = unitGroup.unitType === "heavy";
+  const isLight = unitGroup.unitType === "light";
+  const model = isHeavy
+    ? createRider(palette.armorMaterial, palette.accentMaterial)
+    : createSoldier({
+        armorMaterial: palette.armorMaterial,
+        accentMaterial: palette.accentMaterial,
+        skinMaterial: palette.skinMaterial,
+        darkMaterial: palette.darkMaterial,
+        weapon: isLight ? "javelin" : "spear"
+      });
+
+  model.scale.setScalar(isHeavy ? 1.48 : isLight ? 1.04 : 1.2);
+  model.userData.unitType = unitGroup.unitType;
+  model.userData.side = side;
+  return model;
+}
+
+function createEncounterLayer() {
+  const group = new THREE.Group();
+  group.name = "encounter-layer";
+  group.visible = false;
+  group.userData.lastEncounterKey = "";
+  return group;
+}
+
+function encounterPlacement(encounter, side, index, total) {
+  const bearing = Number(encounter.bearing ?? 0);
+  const forward = new THREE.Vector3(Math.cos(bearing), 0, Math.sin(bearing)).normalize();
+  const right = new THREE.Vector3(-forward.z, 0, forward.x).normalize();
+  const forwardDistance = side === "attacker"
+    ? -((encounter.hex?.cellSize ?? 72) * 2.65)
+    : ((encounter.hex?.cellSize ?? 72) * 2.65);
+  const lateral = (index - (Math.max(1, total) - 1) / 2) * (encounter.hex?.cellSize ?? 72) * 0.9;
+  const x = encounter.center.x + forward.x * forwardDistance + right.x * lateral;
+  const z = encounter.center.z + forward.z * forwardDistance + right.z * lateral;
+  return terrainPoint(x, z, 8);
+}
+
+function clearEncounterLayer(layer) {
+  for (const child of layer.children) disposeObject(child);
+  layer.clear();
+}
+
+function rebuildEncounterLayer(layer, encounter) {
+  if (!encounter) {
+    clearEncounterLayer(layer);
+    layer.visible = false;
+    layer.userData.lastEncounterKey = "";
+    return;
+  }
+
+  const key = JSON.stringify({
+    kind: encounter.kind,
+    center: encounter.center,
+    bearing: encounter.bearing,
+    participants: encounter.participants?.map((participant) => ({
+      id: participant.id,
+      side: participant.side,
+      owner: participant.owner,
+      unitCount: participant.unitCount,
+      unitTypes: participant.unitGroups?.map((unit) => unit.unitType)
+    })),
+    engagement: encounter.engagement,
+    board: encounter.board?.cells?.map((cell) => [cell.unitId, cell.side, cell.unitType, cell.q, cell.r])
+  });
+
+  if (key === layer.userData.lastEncounterKey) {
+    layer.visible = true;
+    return;
+  }
+
+  clearEncounterLayer(layer);
+  const hexGrid = createEncounterHexGrid(encounter);
+  hexGrid.name = "encounter-hex-grid";
+  layer.add(hexGrid);
+
+  const cellGroup = new THREE.Group();
+  cellGroup.name = "encounter-hex-occupants";
+  for (const cell of encounter.board?.cells ?? []) {
+    const world = hexAxialToWorld(encounter, cell.q, cell.r, encounter.board?.cellSize ?? encounter.hex?.cellSize ?? 72);
+    const plate = createOccupiedHexPlate(encounter, cell);
+    cellGroup.add(plate);
+
+    const troop = new THREE.Group();
+    const facing = cell.side === "attacker" ? Number(encounter.bearing ?? 0) : Number(encounter.bearing ?? 0) + Math.PI;
+    placeOnTerrain(troop, world.x, world.z, facing, cell.unitType === "heavy" ? 12 : 8);
+    const model = createEncounterUnitModel(cell, cell.side);
+    model.traverse((child) => {
+      child.userData.unitId = cell.unitId;
+      child.userData.owner = cell.owner;
+      child.userData.side = cell.side;
+      child.userData.unitType = cell.unitType ?? "medium";
+      child.userData.hexQ = cell.q;
+      child.userData.hexR = cell.r;
+    });
+    troop.add(model);
+    cellGroup.add(troop);
+  }
+  layer.add(cellGroup);
+
+  const centerMarker = new THREE.Mesh(
+    new THREE.CylinderGeometry(7, 9, 18, 6),
+    new THREE.MeshStandardMaterial({
+      color: encounter.kind === "arrival" ? "#d6b95f" : "#8cb7cf",
+      roughness: 0.72,
+      metalness: 0.05,
+      transparent: true,
+      opacity: 0.82
+    })
+  );
+  centerMarker.position.copy(terrainPoint(encounter.center.x, encounter.center.z, 14));
+  centerMarker.renderOrder = 60;
+  centerMarker.castShadow = true;
+  layer.add(centerMarker);
+
+  layer.visible = true;
+  layer.userData.lastEncounterKey = key;
 }
 
 function createBattleMarkers() {
@@ -2300,8 +2558,22 @@ function createHud() {
   };
 }
 
-function updateHud(hud, state, rendererLabel, selectedRegion) {
+function updateHud(hud, state, rendererLabel, selectedRegion, encounter = null) {
   const selected = state.lanes[state.selectedLane];
+  if (encounter?.active) {
+    hud.mode.textContent = `${encounter.kind.toUpperCase()} / ${encounter.title.toUpperCase()}`;
+    hud.morale.textContent = encounter.engagement
+      ? `Opening ${encounter.engagement.openingStrength}`
+      : `Groups ${encounter.participantCount ?? 0}`;
+    hud.cohesion.textContent = encounter.engagement
+      ? `Defenders ${encounter.engagement.defenderTroopsCommitted}`
+      : `Hex ${encounter.hex?.radius ?? 0}`;
+    hud.renderer.textContent = `Fixed battle view`;
+    hud.lane.textContent = `Battlefield anchored at ${Math.round(encounter.center.x)}, ${Math.round(encounter.center.z)}`;
+    hud.region.textContent = `Hex troops ${encounter.board?.cells?.length ?? 0}`;
+    return;
+  }
+
   hud.mode.textContent = `${state.mode.toUpperCase()} / ${state.formation.toUpperCase()}`;
   hud.morale.textContent = `Morale ${Math.round(state.player.morale)}`;
   hud.cohesion.textContent = `Cohesion ${Math.round(state.player.cohesion)}`;
@@ -2479,6 +2751,22 @@ function updateBattleMarkers(group, state, elapsed) {
   }
 }
 
+function updateEncounterCamera(camera, encounter, delta) {
+  if (!encounter?.active) return;
+
+  const bearing = Number(encounter.bearing ?? 0);
+  const forward = new THREE.Vector3(Math.cos(bearing), 0, Math.sin(bearing)).normalize();
+  const focus = terrainPoint(encounter.center.x, encounter.center.z, encounter.camera?.focusLift ?? 24);
+  const targetPosition = focus.clone()
+    .addScaledVector(forward, -(encounter.camera?.distance ?? 420))
+    .add(new THREE.Vector3(0, encounter.camera?.height ?? 230, 0));
+
+  camera.position.lerp(targetPosition, clamp(delta * 2.2, 0, 1));
+  camera.lookAt(focus);
+  camera.fov = THREE.MathUtils.lerp(camera.fov, encounter.camera?.fov ?? 40, clamp(delta * 2.8, 0, 1));
+  camera.updateProjectionMatrix();
+}
+
 function updateRegionSelection(regionSelection, selectedRegionId) {
   const regionObjects = [
     ...(regionSelection.userData.regionSurfaces ?? []),
@@ -2569,6 +2857,7 @@ export async function createRenderer(canvas) {
   const regionSelection = createRegionSelectionLayer();
   const regionalStrongholds = createRegionalStrongholds();
   const provinceForceMarkers = createProvinceForceMarkers();
+  const encounterLayer = createEncounterLayer();
 
   scene.add(water);
   scene.add(mist);
@@ -2587,6 +2876,7 @@ export async function createRenderer(canvas) {
   scene.add(createTreeLines());
   scene.add(createRockOutcrops());
   scene.add(battleMarkers);
+  scene.add(encounterLayer);
 
   const sun = new THREE.DirectionalLight("#ffbf76", 5.6);
   sun.position.set(-2400, 3200, 1300);
@@ -2614,21 +2904,34 @@ export async function createRenderer(canvas) {
     lastSnapshot = snapshot;
     const delta = Math.min(CLOCK.getDelta(), 1 / 20);
     const elapsed = CLOCK.elapsedTime;
+    const encounter = snapshot?.campaign?.encounter ?? null;
+    const encounterActive = Boolean(encounter?.active);
 
-    controls.update(delta);
+    if (!encounterActive) {
+      controls.update(delta);
+    } else {
+      updateEncounterCamera(camera, encounter, delta);
+    }
     updateSkyDome(sky, camera);
     updateTerrain(terrain, elapsed);
     updateWater(water, elapsed);
     updateMist(mist, camera, elapsed, delta);
     updateMist(highMist, camera, elapsed * 0.6, delta * 0.6);
+    battleMarkers.visible = !encounterActive;
+    regionSelection.visible = !encounterActive;
+    regionalStrongholds.visible = !encounterActive;
+    provinceForceMarkers.visible = !encounterActive;
+    endpointFog.visible = !encounterActive;
     updateBattleMarkers(battleMarkers, snapshot, elapsed);
     updateRegionSelection(regionSelection, selectedRegionId);
-    updateHud(hud, snapshot, rendererLabel, getSelectedRegion());
+    rebuildEncounterLayer(encounterLayer, encounter);
+    updateHud(hud, snapshot, rendererLabel, getSelectedRegion(), encounter);
     renderer.render(scene, camera);
   }
 
   function pick(event) {
     if (!lastSnapshot) return null;
+    if (lastSnapshot?.campaign?.encounter?.active) return null;
     if (controls.isLooking()) return null;
 
     const rect = canvas.getBoundingClientRect();
@@ -2683,6 +2986,7 @@ export async function createRenderer(canvas) {
   }
 
   function selectRegion(regionId) {
+    if (lastSnapshot?.campaign?.encounter?.active) return null;
     if (!REGIONS.some((region) => region.id === regionId)) return null;
     selectedRegionId = regionId;
     updateRegionSelection(regionSelection, selectedRegionId);
@@ -2701,6 +3005,7 @@ export async function createRenderer(canvas) {
     pick,
     selectRegion,
     getSelectedRegion,
+    isEncounterActive: () => Boolean(lastSnapshot?.campaign?.encounter?.active),
     isFlyMode: () => controls.isLooking(),
     resize,
     getLastSnapshot: () => lastSnapshot,

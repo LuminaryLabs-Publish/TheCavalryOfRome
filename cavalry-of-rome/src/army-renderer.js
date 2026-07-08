@@ -26,6 +26,21 @@ function terrainHeight(x, z) {
   return ridge + farHills + fineFold + crag + foothillRibs + erodedCuts + terrace + valley + riverCut + roadShelf;
 }
 
+function terrainNormal(x, z, step = 18) {
+  const left = terrainHeight(x - step, z);
+  const right = terrainHeight(x + step, z);
+  const down = terrainHeight(x, z - step);
+  const up = terrainHeight(x, z + step);
+  return new THREE.Vector3(left - right, step * 2, down - up).normalize();
+}
+
+function terrainQuaternion(x, z, yaw = 0) {
+  const normal = terrainNormal(x, z);
+  const align = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), normal);
+  const spin = new THREE.Quaternion().setFromAxisAngle(normal, yaw);
+  return align.multiply(spin);
+}
+
 function regionWorld(region) {
   return { x: region.center[0] * THEATER_SCALE, z: region.center[1] * THEATER_SCALE };
 }
@@ -122,23 +137,31 @@ function createMarchMarker(march, campaign) {
   if (!from || !to) return null;
   const fromWorld = regionWorld(from);
   const toWorld = regionWorld(to);
-  const x = fromWorld.x + (toWorld.x - fromWorld.x) * march.progress;
-  const z = fromWorld.z + (toWorld.z - fromWorld.z) * march.progress;
+  const progressPoint = march.currentPosition ?? {
+    x: fromWorld.x + (toWorld.x - fromWorld.x) * march.progress,
+    z: fromWorld.z + (toWorld.z - fromWorld.z) * march.progress
+  };
+  const x = progressPoint.x;
+  const z = progressPoint.z;
   const primaryType = march.units?.[0]?.unitType ?? "light";
   const type = UNIT_TYPES[primaryType] ?? UNIT_TYPES.light;
+  const terrainLift = new THREE.Vector3(x, terrainHeight(x, z), z).addScaledVector(terrainNormal(x, z), 96);
 
   const group = new THREE.Group();
-  group.position.set(x, terrainHeight(x, z) + 96, z);
+  group.position.copy(terrainLift);
   const geometry = new THREE.TorusGeometry(type.radius + Math.min(24, march.count * 2), 3.8, 8, 60);
   geometry.rotateX(Math.PI / 2);
   const material = new THREE.MeshBasicMaterial({ color: type.color, transparent: true, opacity: 0.86, depthWrite: false, depthTest: false });
+  const ringFrame = new THREE.Group();
+  ringFrame.quaternion.copy(terrainQuaternion(x, z, march.route?.bearing ?? 0));
   const ring = new THREE.Mesh(geometry, material);
   ring.renderOrder = 58;
-  group.add(ring);
+  ringFrame.add(ring);
+  group.add(ringFrame);
 
   const lineGeometry = new THREE.BufferGeometry().setFromPoints([
-    new THREE.Vector3(fromWorld.x, terrainHeight(fromWorld.x, fromWorld.z) + 70, fromWorld.z),
-    new THREE.Vector3(toWorld.x, terrainHeight(toWorld.x, toWorld.z) + 70, toWorld.z)
+    new THREE.Vector3(fromWorld.x, terrainHeight(fromWorld.x, fromWorld.z), fromWorld.z).addScaledVector(terrainNormal(fromWorld.x, fromWorld.z), 70),
+    new THREE.Vector3(toWorld.x, terrainHeight(toWorld.x, toWorld.z), toWorld.z).addScaledVector(terrainNormal(toWorld.x, toWorld.z), 70)
   ]);
   const line = new THREE.Line(lineGeometry, new THREE.LineBasicMaterial({ color: type.color, transparent: true, opacity: 0.26, depthWrite: false, depthTest: false }));
   line.renderOrder = 49;
@@ -190,6 +213,9 @@ function buildUnitLayer(layer, snapshot, hoveredUnitId, localSelectedIds) {
 function summary(snapshot, localSelectedIds) {
   const campaign = snapshot?.campaign;
   if (!campaign) return "Unit groups unavailable";
+  if (campaign.encounter?.active) {
+    return `Encounter active / ${campaign.encounter.title ?? campaign.encounter.kind ?? "battlefield"}`;
+  }
   const selected = new Set([...(campaign.selectedUnitIds ?? []), ...localSelectedIds]);
   const moving = campaign.marches?.length ?? 0;
   const gold = campaign.gold ?? 0;
@@ -221,6 +247,7 @@ export async function createRenderer(canvas) {
   }
 
   function pickUnit(event) {
+    if (base.isEncounterActive?.()) return null;
     if (base.isFlyMode?.()) return null;
     pointerFromEvent(event);
     raycaster.setFromCamera(pointer, base.camera);
@@ -260,6 +287,9 @@ export async function createRenderer(canvas) {
 
   function draw(snapshot) {
     lastSnapshot = snapshot;
+    const encounterActive = Boolean(snapshot?.campaign?.encounter?.active);
+    if (encounterActive) localSelectedIds = new Set();
+    unitLayer.visible = !encounterActive;
     const key = layerKey(snapshot);
     if (key !== lastLayerKey) {
       buildUnitLayer(unitLayer, snapshot, hoveredUnitId, localSelectedIds);
@@ -276,6 +306,7 @@ export async function createRenderer(canvas) {
   }
 
   function selectUnit(unitHit, append = false) {
+    if (base.isEncounterActive?.()) return null;
     if (!unitHit?.unitId) return null;
     if (!append) localSelectedIds = new Set([unitHit.unitId]);
     else if (localSelectedIds.has(unitHit.unitId)) localSelectedIds.delete(unitHit.unitId);

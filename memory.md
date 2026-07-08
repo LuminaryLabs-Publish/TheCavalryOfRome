@@ -73,3 +73,13 @@
 - Finding: strategic-board-game-loop-kit tracks two world actions per turn, exposes spending/recruitment APIs, deducts gold, and can add crafted unit groups into the campaign state.
 - Intent: Modularize the province command panel as UI Domain Service Kits.
 - Finding: Added control-button-kit.js, control-panel-kit.js, and province-command-panel-kit.js. main.js now uses province-command-panel-kit instead of the old strategic-command-ui path. Button clicks are routed through a reusable control-panel command delegate and control-button data attributes instead of per-button transient listeners.
+- Intent: Add march-to-encounter flow with transit collisions and arrival zoom.
+- Finding: March entries now carry route metadata, live position state, and unit flavor flags for mounted heavies and javelin lights.
+- Finding: Route intersections now trigger paused encounters in transit, while destination arrival opens an encounter state with camera and hex-grid metadata.
+- Finding: The renderer now switches to an encounter layer with zoomed camera framing, hex overlay, and squadron placement while hiding the province overlays and unit rings.
+- Finding: Province movement controls stay intact but are suppressed while an encounter is active, and the headless tests now cover route metadata, collision encounters, arrival encounters, and mounted/javelin flags.
+- Intent: Keep marching troops visually attached to the terrain surface.
+- Finding: March markers were using a flat Y offset; they now use live route position, terrain-normal lift, and slope-aligned framing so moving groups ride the landscape instead of hovering above it.
+- Intent: Improve occupied-province arrivals into real opening engagements with fixed tactical presentation.
+- Finding: Arrival encounters now require destination troops, roll deterministic 1d6 per defending heavy unit, store opening strength and committed defenders, and expose a hex-board cell list for individual troop placement.
+- Finding: The encounter renderer now uses the board cells to place one low-poly troop model per hex, with attackers and defenders mirrored across a fixed rear-camera battlefield.

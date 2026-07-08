@@ -8,6 +8,7 @@ export function createInputAdapter({ canvas, renderer, engine }) {
 
   canvas.addEventListener("click", (event) => {
     if (event.button !== 0 || renderer.isFlyMode?.()) return;
+    if (renderer.isEncounterActive?.()) return;
 
     const hit = renderer.pick(event);
 
@@ -66,6 +67,8 @@ export function createInputAdapter({ canvas, renderer, engine }) {
   function flush() {
     while (pending.length > 0) {
       const action = pending.shift();
+      const encounterActive = renderer.isEncounterActive?.();
+      if (encounterActive && ["selectUnit", "selectArmy", "moveUnits", "moveArmy"].includes(action.type)) continue;
       if (action.type === "formation") engine.cavalry.setFormation(action.formation);
       if (action.type === "selectLane") engine.cavalry.selectLane(action.laneId);
       if (action.type === "selectUnit") engine.cavalry.selectUnit(action.unitId, action.append);

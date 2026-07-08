@@ -9,7 +9,7 @@ import {
   createSequenceState
 } from "./sequences.js";
 
-export const CAVALRY_OF_ROME_KIT_VERSION = "0.3.0";
+export const CAVALRY_OF_ROME_KIT_VERSION = "0.5.0";
 
 export const CavalryState = defineResource("cavalryOfRome.state");
 
@@ -28,6 +28,7 @@ export const UnitSelected = defineEvent("cavalry.unit.selected");
 export const UnitMoveRequested = defineEvent("cavalry.unit.move.requested");
 export const UnitMarchStarted = defineEvent("cavalry.unit.march.started");
 export const UnitMarchCompleted = defineEvent("cavalry.unit.march.completed");
+export const EncounterStarted = defineEvent("cavalry.encounter.started");
 
 const REGIONS = [
   { id: "gallia", label: "Gallia", center: [-2260, 1360], owner: "blue" },
@@ -58,6 +59,10 @@ const EVENT_CARD_LIBRARY = [
   { id: "local-guide", label: "Local Guide", weight: 1, effect: "speed" }
 ];
 
+const THEATER_SCALE = 2.55;
+const MARCH_INTERSECTION_RADIUS = 180;
+const UNIT_TYPE_PRIORITY = { heavy: 0, medium: 1, light: 2 };
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
@@ -69,6 +74,304 @@ function clone(value) {
 function formatPercent(value) {
   return Math.round(value);
 }
+
+function worldPointFromRegion(region) {
+  return {
+    x: Number(region?.center?.[0] ?? 0) * THEATER_SCALE,
+    z: Number(region?.center?.[1] ?? 0) * THEATER_SCALE
+  };
+}
+
+function cloneMarchUnit(unit, index) {
+  return {
+    id: unit.id,
+    label: unit.label,
+    unitType: unit.unitType,
+    soldiers: unit.soldiers,
+    mounted: unit.unitType === "heavy",
+    javelins: unit.unitType === "light",
+    rank: index,
+    owner: unit.owner
+  };
+}
+
+function stableHash(value) {
+  let hash = 2166136261;
+  const text = String(value ?? "");
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return hash >>> 0;
+}
+
+function deterministicD6(seed) {
+  return (stableHash(seed) % 6) + 1;
+}
+
+function createMarchRoute(campaign, fromRegionId, toRegionId) {
+  const fromRegion = campaign.regions[fromRegionId];
+  const toRegion = campaign.regions[toRegionId];
+  if (!fromRegion || !toRegion) return null;
+
+  const start = worldPointFromRegion(fromRegion);
+  const end = worldPointFromRegion(toRegion);
+  const dx = end.x - start.x;
+  const dz = end.z - start.z;
+  const length = Math.max(1, Math.hypot(dx, dz));
+
+  return {
+    fromRegionId,
+    toRegionId,
+    start,
+    end,
+    length,
+    bearing: Math.atan2(dz, dx),
+    segments: [{ ...start }, { ...end }],
+    createdAt: null
+  };
+}
+
+function routePointAt(route, progress) {
+  const t = clamp(progress, 0, 1);
+  return {
+    x: route.start.x + (route.end.x - route.start.x) * t,
+    z: route.start.z + (route.end.z - route.start.z) * t
+  };
+}
+
+function segmentIntersection(a, b, c, d) {
+  const den = (b.x - a.x) * (d.z - c.z) - (b.z - a.z) * (d.x - c.x);
+  if (Math.abs(den) < 1e-6) return null;
+
+  const ua = ((d.x - c.x) * (a.z - c.z) - (d.z - c.z) * (a.x - c.x)) / den;
+  const ub = ((b.x - a.x) * (a.z - c.z) - (b.z - a.z) * (a.x - c.x)) / den;
+  if (ua < 0 || ua > 1 || ub < 0 || ub > 1) return null;
+
+  return {
+    point: {
+      x: a.x + ua * (b.x - a.x),
+      z: a.z + ua * (b.z - a.z)
+    },
+    ua,
+    ub
+  };
+}
+
+function encounterGroupFromMarch(march, side = "attacker") {
+  return {
+    id: march.id,
+    side,
+    owner: march.owner,
+    fromRegionId: march.fromRegionId,
+    toRegionId: march.toRegionId,
+    label: march.units?.map((unit) => unit.label).join(", ") || march.id,
+    unitGroups: (march.units ?? []).map(cloneMarchUnit),
+    soldiers: march.soldiers,
+    unitCount: march.count
+  };
+}
+
+function encounterGroupFromRegion(state, regionId) {
+  const region = state.campaign.regions[regionId];
+  if (!region) return null;
+  const units = (state.campaign.units ?? []).filter((unit) => unit.status === "garrison" && unit.regionId === regionId);
+  if (units.length === 0) return null;
+
+  return {
+    id: `province-${regionId}`,
+    side: "defender",
+    owner: region.owner,
+    regionId,
+    label: region.label,
+    unitGroups: units.map(cloneMarchUnit),
+    soldiers: units.reduce((sum, unit) => sum + Number(unit.soldiers ?? 0), 0),
+    unitCount: units.length
+  };
+}
+
+function countEncounterParticipants(groups) {
+  return groups.reduce((sum, group) => sum + Number(group.unitCount ?? 0), 0);
+}
+
+function centeredValues(values) {
+  return [...values].sort((a, b) => Math.abs(a) - Math.abs(b) || a - b);
+}
+
+function hexRowCells(radius, r) {
+  const qMin = Math.max(-radius, -r - radius);
+  const qMax = Math.min(radius, -r + radius);
+  const values = [];
+  for (let q = qMin; q <= qMax; q += 1) values.push(q);
+  return centeredValues(values);
+}
+
+function deploymentHexes(side, count, radius) {
+  const cells = [];
+  const direction = side === "attacker" ? -1 : 1;
+  let row = 0;
+
+  while (cells.length < count && row < radius) {
+    const r = direction * Math.min(radius, 2 + row);
+    for (const q of hexRowCells(radius, r)) {
+      cells.push({ q, r });
+      if (cells.length >= count) break;
+    }
+    row += 1;
+  }
+
+  return cells;
+}
+
+function flattenEncounterUnits(groups, side) {
+  return groups
+    .filter((group) => group.side === side || (side === "attacker" && group.side !== "defender"))
+    .flatMap((group) => (group.unitGroups ?? []).map((unit) => ({
+      ...unit,
+      participantId: group.id,
+      side,
+      owner: group.owner,
+      groupLabel: group.label
+    })));
+}
+
+function orderDefenderUnitsForEngagement(units) {
+  return [...units].sort((a, b) => {
+    const priority = (UNIT_TYPE_PRIORITY[a.unitType] ?? 9) - (UNIT_TYPE_PRIORITY[b.unitType] ?? 9);
+    if (priority !== 0) return priority;
+    return String(a.id).localeCompare(String(b.id));
+  });
+}
+
+function createOpeningEngagement(world, state, kind, participants) {
+  if (kind !== "arrival") return null;
+  const defenderUnits = flattenEncounterUnits(participants, "defender");
+  if (defenderUnits.length === 0) return null;
+
+  const heavyUnits = defenderUnits.filter((unit) => unit.unitType === "heavy");
+  const dice = heavyUnits.map((unit, index) => ({
+    unitId: unit.id,
+    unitType: unit.unitType,
+    sides: 6,
+    result: deterministicD6(`${state.id}:${state.campaign.turn}:${unit.id}:${world.__nexusClock.frame}:${index}`)
+  }));
+  const total = dice.reduce((sum, die) => sum + die.result, 0);
+  const committed = orderDefenderUnitsForEngagement(defenderUnits).slice(0, Math.min(total, defenderUnits.length));
+
+  return {
+    type: "opening",
+    status: "formed",
+    defenderHeavyCount: heavyUnits.length,
+    dice,
+    openingStrength: total,
+    defenderTroopsRequested: total,
+    defenderTroopsCommitted: committed.length,
+    attackerTroopsCommitted: flattenEncounterUnits(participants, "attacker").length,
+    defenderUnitIds: committed.map((unit) => unit.id)
+  };
+}
+
+function createEncounterBoard(participants, hex, engagement = null) {
+  const radius = hex?.radius ?? 6;
+  const attackerUnits = flattenEncounterUnits(participants, "attacker");
+  const allDefenderUnits = flattenEncounterUnits(participants, "defender");
+  const committedDefenderIds = engagement?.defenderUnitIds ? new Set(engagement.defenderUnitIds) : null;
+  const defenderUnits = committedDefenderIds
+    ? allDefenderUnits.filter((unit) => committedDefenderIds.has(unit.id))
+    : allDefenderUnits;
+
+  const cells = [];
+  const place = (side, units) => {
+    const hexes = deploymentHexes(side, units.length, radius);
+    for (let i = 0; i < units.length; i += 1) {
+      const hexCell = hexes[i] ?? { q: 0, r: side === "attacker" ? -radius : radius };
+      cells.push({
+        ...hexCell,
+        side,
+        unitId: units[i].id,
+        unitType: units[i].unitType ?? "medium",
+        owner: units[i].owner,
+        label: units[i].label,
+        participantId: units[i].participantId,
+        groupLabel: units[i].groupLabel,
+        mounted: units[i].unitType === "heavy",
+        javelins: units[i].unitType === "light",
+        soldiers: units[i].soldiers,
+        index: i
+      });
+    }
+  };
+
+  place("attacker", attackerUnits);
+  place("defender", defenderUnits);
+
+  return {
+    radius,
+    cellSize: hex?.cellSize ?? 72,
+    perspective: "attacker-rear",
+    attackerCount: attackerUnits.length,
+    defenderCount: defenderUnits.length,
+    defenderAvailableCount: allDefenderUnits.length,
+    cells
+  };
+}
+
+function createEncounterState(world, state, kind, center, marchGroups, extraGroups = []) {
+  const participants = [...marchGroups, ...extraGroups].filter(Boolean);
+  const hex = {
+    radius: 6,
+    cellSize: kind === "arrival" ? 58 : 72
+  };
+  const engagement = createOpeningEngagement(world, state, kind, participants);
+  const encounter = {
+    active: true,
+    kind,
+    center: {
+      x: center.x,
+      z: center.z,
+      y: terrainSafeHeight(center.x, center.z) + 18
+    },
+    bearing: Number(center.bearing ?? 0),
+    startedAt: world.__nexusClock.elapsed,
+    marchIds: marchGroups.map((group) => group.id),
+    participants,
+    participantCount: countEncounterParticipants(participants),
+    engagement,
+    board: null,
+    camera: {
+      fov: kind === "arrival" ? 30 : 40,
+      distance: kind === "arrival" ? 420 : 520,
+      height: kind === "arrival" ? 250 : 280,
+      focusLift: kind === "arrival" ? 32 : 28,
+      perspective: "attacker-rear"
+    },
+    hex,
+    title: kind === "arrival" ? "Destination encounter" : "Intercept encounter"
+  };
+  encounter.board = createEncounterBoard(participants, encounter.hex, engagement);
+
+  state.campaign.encounter = encounter;
+  state.campaign.selectedUnitIds = [];
+  normalizeCampaign(state.campaign);
+  state.lastEvent = EncounterStarted.name;
+  state.campaign.lastArmyEvent = kind === "arrival"
+    ? `Encounter started at ${state.campaign.regions[marchGroups[0]?.toRegionId ?? center.regionId]?.label ?? "destination"}.`
+    : "Marching forces collided in transit.";
+  appendLog(state, makeLogEntry(world, state.campaign.lastArmyEvent, "encounter"));
+  world.emit(EncounterStarted, encounter);
+  return encounter;
+}
+
+function terrainSafeHeight(x, z) {
+  return -190 + Math.sin(x * 0.0008) * 16 + Math.cos(z * 0.0007) * 12;
+}
+
+export {
+  createMarchRoute,
+  routePointAt,
+  segmentIntersection,
+  createEncounterState
+};
 
 function makeLogEntry(world, message, type = "info") {
   return {
@@ -164,6 +467,7 @@ function createCampaignState() {
     regions,
     units: createInitialUnits(regions),
     marches: [],
+    encounter: null,
     selectedUnitIds: [],
     selectedUnits: [],
     selectedArmy: null,
@@ -174,6 +478,35 @@ function createCampaignState() {
   };
   normalizeCampaign(campaign);
   return campaign;
+}
+
+function encounterActive(campaign) {
+  return Boolean(campaign?.encounter?.active);
+}
+
+function pauseMarchesForEncounter(campaign, activeMarchIds = []) {
+  const keepActive = new Set(activeMarchIds);
+  for (const march of campaign.marches ?? []) {
+    if (march.status !== "marching") continue;
+    march.status = keepActive.has(march.id) ? "encountering" : "paused";
+  }
+}
+
+function completeMarch(world, state, march) {
+  for (const unitId of march.unitIds ?? []) {
+    const unit = state.campaign.units.find((candidate) => candidate.id === unitId);
+    if (!unit) continue;
+    unit.status = "garrison";
+    unit.regionId = march.toRegionId;
+    unit.marchId = null;
+  }
+
+  state.campaign.marches = (state.campaign.marches ?? []).filter((candidate) => candidate.id !== march.id);
+  const region = state.campaign.regions[march.toRegionId];
+  state.campaign.lastArmyEvent = `${march.count} unit groups arrived in ${region?.label ?? march.toRegionId}.`;
+  state.lastEvent = UnitMarchCompleted.name;
+  appendLog(state, makeLogEntry(world, state.campaign.lastArmyEvent, "success"));
+  world.emit(UnitMarchCompleted, { marchId: march.id, toRegionId: march.toRegionId, unitIds: march.unitIds ?? [] });
 }
 
 function createInitialState(level) {
@@ -347,7 +680,36 @@ function marchDurationSeconds(campaign, fromRegionId, toRegionId, unitType) {
   return clamp(Math.round((600 + distanceT * 600) * typeFactor), 420, 1200);
 }
 
+function pointDistance(a, b) {
+  return Math.hypot(Number(a?.x ?? 0) - Number(b?.x ?? 0), Number(a?.z ?? 0) - Number(b?.z ?? 0));
+}
+
+function findMarchCollision(marches) {
+  for (let i = 0; i < marches.length; i += 1) {
+    for (let j = i + 1; j < marches.length; j += 1) {
+      const first = marches[i];
+      const second = marches[j];
+      if (!first?.route || !second?.route) continue;
+
+      const hit = segmentIntersection(first.route.start, first.route.end, second.route.start, second.route.end);
+      if (!hit) continue;
+
+      const firstPosition = first.currentPosition ?? routePointAt(first.route, first.progress);
+      const secondPosition = second.currentPosition ?? routePointAt(second.route, second.progress);
+      if (pointDistance(firstPosition, hit.point) > MARCH_INTERSECTION_RADIUS) continue;
+      if (pointDistance(secondPosition, hit.point) > MARCH_INTERSECTION_RADIUS) continue;
+
+      return {
+        center: hit.point,
+        marches: [first, second]
+      };
+    }
+  }
+  return null;
+}
+
 function handleUnitSelection(world, state, event) {
+  if (encounterActive(state.campaign)) return emitRejection(world, state, "An encounter is already active.", "selectUnit");
   const unitId = event.unitId ?? event.armyId;
   const append = Boolean(event.append ?? event.shiftKey);
   const unit = state.campaign.units.find((candidate) => candidate.id === unitId);
@@ -378,6 +740,7 @@ function handleUnitSelection(world, state, event) {
 
 function handleUnitMove(world, state, event) {
   const targetRegionId = event.targetRegionId ?? event.regionId;
+  if (encounterActive(state.campaign)) return emitRejection(world, state, "An encounter is already active.", "moveUnits");
   if (!state.campaign.regions[targetRegionId]) return emitRejection(world, state, `Unknown target province: ${targetRegionId}`, "moveUnits");
 
   const units = selectedUnits(state.campaign).filter((unit) => unit.status === "garrison");
@@ -394,7 +757,7 @@ function handleUnitMove(world, state, event) {
     id: `march-${state.campaign.nextMarchId++}`,
     owner: units[0].owner,
     unitIds: units.map((unit) => unit.id),
-    units: units.map((unit) => ({ id: unit.id, label: unit.label, unitType: unit.unitType, soldiers: unit.soldiers })),
+    units: units.map((unit, index) => ({ id: unit.id, label: unit.label, unitType: unit.unitType, soldiers: unit.soldiers, owner: unit.owner, mounted: unit.unitType === "heavy", javelins: unit.unitType === "light", rank: index })),
     count: units.length,
     soldiers: units.reduce((sum, unit) => sum + unit.soldiers, 0),
     fromRegionId: sourceRegionId,
@@ -403,8 +766,13 @@ function handleUnitMove(world, state, event) {
     durationSeconds,
     remainingSeconds: durationSeconds,
     progress: 0,
-    status: "marching"
+    status: "marching",
+    route: createMarchRoute(state.campaign, sourceRegionId, targetRegionId),
+    currentPosition: null
   };
+
+  march.route.createdAt = world.__nexusClock.elapsed;
+  march.currentPosition = routePointAt(march.route, 0);
 
   for (const unit of units) {
     unit.status = "marching";
@@ -422,33 +790,48 @@ function handleUnitMove(world, state, event) {
 }
 
 function updateCampaignMarches(world, state) {
+  if (encounterActive(state.campaign)) {
+    normalizeCampaign(state.campaign);
+    return;
+  }
+
   const dt = world.__nexusClock.delta;
-  const arrivals = [];
-  for (const march of state.campaign.marches) {
-    if (march.status !== "marching") continue;
+  const marching = state.campaign.marches.filter((march) => march.status === "marching");
+
+  for (const march of marching) {
     march.remainingSeconds = clamp(march.remainingSeconds - dt, 0, march.durationSeconds);
     march.progress = clamp(1 - march.remainingSeconds / march.durationSeconds, 0, 1);
-    if (march.remainingSeconds <= 0) {
-      march.status = "arrived";
-      arrivals.push(march);
-    }
+    march.currentPosition = routePointAt(march.route, march.progress);
   }
 
-  for (const march of arrivals) {
-    for (const unitId of march.unitIds ?? []) {
-      const unit = state.campaign.units.find((candidate) => candidate.id === unitId);
-      if (!unit) continue;
-      unit.regionId = march.toRegionId;
-      unit.status = "garrison";
-      unit.marchId = null;
-      unit.experience += 1;
-    }
-    state.campaign.lastArmyEvent = `${march.count} unit groups arrived in ${state.campaign.regions[march.toRegionId].label}.`;
-    appendLog(state, makeLogEntry(world, state.campaign.lastArmyEvent, "success"));
-    world.emit(UnitMarchCompleted, march);
+  const collision = findMarchCollision(marching);
+  if (collision) {
+    pauseMarchesForEncounter(state.campaign, collision.marches.map((march) => march.id));
+    const marchGroups = collision.marches.map((march, index) => encounterGroupFromMarch(march, index === 0 ? "attacker" : "defender"));
+    createEncounterState(world, state, "collision", { ...collision.center, bearing: collision.marches[0]?.route?.bearing ?? 0 }, marchGroups);
+    normalizeCampaign(state.campaign);
+    return;
   }
 
-  state.campaign.marches = state.campaign.marches.filter((march) => march.status === "marching");
+  const arrival = marching.find((march) => march.progress >= 1 || march.remainingSeconds <= 0);
+  if (arrival) {
+    arrival.progress = 1;
+    arrival.remainingSeconds = 0;
+    arrival.currentPosition = routePointAt(arrival.route, 1);
+    const marchGroups = [encounterGroupFromMarch(arrival, "attacker")];
+    const defenderGroup = encounterGroupFromRegion(state, arrival.toRegionId);
+    if (!defenderGroup) {
+      completeMarch(world, state, arrival);
+      normalizeCampaign(state.campaign);
+      return;
+    }
+
+    pauseMarchesForEncounter(state.campaign, [arrival.id]);
+    createEncounterState(world, state, "arrival", { ...arrival.currentPosition, bearing: arrival.route?.bearing ?? 0 }, marchGroups, [defenderGroup]);
+    normalizeCampaign(state.campaign);
+    return;
+  }
+
   normalizeCampaign(state.campaign);
 }
 
@@ -569,6 +952,7 @@ export function createCavalryOfRomeKit(config = {}) {
     evaluateBattleEnd(world, state);
     normalizeCampaign(state.campaign);
 
+    sequenceEvents.push(...world.readEvents(EncounterStarted));
     sequenceEvents.push(...world.readEvents(ImpactResolved));
     sequenceEvents.push(...world.readEvents(EnemyRouted));
     sequenceEvents.push(...world.readEvents(UnitMarchCompleted));
@@ -595,7 +979,8 @@ export function createCavalryOfRomeKit(config = {}) {
       UnitSelected,
       UnitMoveRequested,
       UnitMarchStarted,
-      UnitMarchCompleted
+      UnitMarchCompleted,
+      EncounterStarted
     },
     systems: [{ phase: "simulate", name: "cavalryOfRomeSystem", system: cavalrySystem }],
     initWorld({ world }) {
