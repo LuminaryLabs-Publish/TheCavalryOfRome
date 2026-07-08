@@ -61,7 +61,7 @@ const EVENT_CARD_LIBRARY = [
 
 const THEATER_SCALE = 2.55;
 const MARCH_INTERSECTION_RADIUS = 180;
-const MARCH_TEST_SPEED_MULTIPLIER = 10;
+const MARCH_TEST_SPEED_MULTIPLIER = 100;
 const UNIT_TYPE_PRIORITY = { heavy: 0, medium: 1, light: 2 };
 
 function clamp(value, min, max) {

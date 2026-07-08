@@ -167,10 +167,36 @@ function createMarchMarker(march, campaign) {
   line.renderOrder = 49;
   group.add(line);
   group.userData.marchId = march.id;
+  group.userData.markerKey = marchMarkerKey(march);
+  group.userData.ringFrame = ringFrame;
   return group;
 }
 
-function buildUnitLayer(layer, snapshot, hoveredUnitId, localSelectedIds) {
+function marchMarkerKey(march) {
+  return JSON.stringify({
+    id: march.id,
+    fromRegionId: march.fromRegionId,
+    toRegionId: march.toRegionId,
+    count: march.count,
+    primaryType: march.units?.[0]?.unitType ?? "light"
+  });
+}
+
+function updateMarchMarker(marker, march, campaign) {
+  const from = campaign.regions[march.fromRegionId];
+  const to = campaign.regions[march.toRegionId];
+  if (!from || !to) return;
+  const progressPoint = march.currentPosition ?? {
+    x: regionWorld(from).x + (regionWorld(to).x - regionWorld(from).x) * march.progress,
+    z: regionWorld(from).z + (regionWorld(to).z - regionWorld(from).z) * march.progress
+  };
+  const x = progressPoint.x;
+  const z = progressPoint.z;
+  marker.position.copy(new THREE.Vector3(x, terrainHeight(x, z), z).addScaledVector(terrainNormal(x, z), 96));
+  marker.userData.ringFrame?.quaternion.copy(terrainQuaternion(x, z, march.route?.bearing ?? 0));
+}
+
+function buildGarrisonLayer(layer, snapshot, hoveredUnitId, localSelectedIds) {
   for (const child of layer.children) disposeObject(child);
   layer.clear();
   const campaign = snapshot?.campaign;
@@ -203,11 +229,81 @@ function buildUnitLayer(layer, snapshot, hoveredUnitId, localSelectedIds) {
       layer.add(ring);
     }
   }
+}
+
+function syncMarchLayer(layer, snapshot) {
+  const campaign = snapshot?.campaign;
+  if (!campaign?.marches || !campaign?.regions) return;
+  if (!layer.userData.markers) layer.userData.markers = new Map();
+  const activeIds = new Set();
 
   for (const march of campaign.marches ?? []) {
-    const marker = createMarchMarker(march, campaign);
-    if (marker) layer.add(marker);
+    activeIds.add(march.id);
+    const nextKey = marchMarkerKey(march);
+    let marker = layer.userData.markers.get(march.id);
+    if (marker && marker.userData.markerKey !== nextKey) {
+      layer.remove(marker);
+      disposeObject(marker);
+      layer.userData.markers.delete(march.id);
+      marker = null;
+    }
+    if (!marker) {
+      marker = createMarchMarker(march, campaign);
+      if (!marker) continue;
+      layer.userData.markers.set(march.id, marker);
+      layer.add(marker);
+    } else {
+      updateMarchMarker(marker, march, campaign);
+    }
   }
+
+  for (const [marchId, marker] of layer.userData.markers.entries()) {
+    if (activeIds.has(marchId)) continue;
+    layer.remove(marker);
+    disposeObject(marker);
+    layer.userData.markers.delete(marchId);
+  }
+}
+
+function clearMarchLayer(layer) {
+  for (const child of layer.children) disposeObject(child);
+  layer.clear();
+  layer.userData.markers = new Map();
+}
+
+function garrisonLayerKey(snapshot, hoveredUnitId, localSelectedIds) {
+  const campaign = snapshot?.campaign;
+  return JSON.stringify({
+    units: (campaign?.units ?? [])
+      .filter((unit) => unit.status === "garrison")
+      .map((unit) => [unit.id, unit.regionId, unit.unitType, unit.soldiers, unit.owner]),
+    selected: [...(campaign?.selectedUnitIds ?? []), ...localSelectedIds],
+    hoveredUnitId
+  });
+}
+
+function buildUnitLayer(layer, snapshot, hoveredUnitId, localSelectedIds) {
+  const garrisonLayer = layer.userData.garrisonLayer;
+  const marchLayer = layer.userData.marchLayer;
+  if (!garrisonLayer || !marchLayer) return;
+
+  const key = garrisonLayerKey(snapshot, hoveredUnitId, localSelectedIds);
+  if (key !== layer.userData.lastGarrisonKey) {
+    buildGarrisonLayer(garrisonLayer, snapshot, hoveredUnitId, localSelectedIds);
+    layer.userData.lastGarrisonKey = key;
+  }
+  syncMarchLayer(marchLayer, snapshot);
+}
+
+function clearUnitLayer(layer) {
+  const garrisonLayer = layer.userData.garrisonLayer;
+  const marchLayer = layer.userData.marchLayer;
+  if (garrisonLayer) {
+    for (const child of garrisonLayer.children) disposeObject(child);
+    garrisonLayer.clear();
+  }
+  if (marchLayer) clearMarchLayer(marchLayer);
+  layer.userData.lastGarrisonKey = "";
 }
 
 function summary(snapshot, localSelectedIds) {
@@ -227,6 +323,15 @@ export async function createRenderer(canvas) {
   const base = await createPropSafeRenderer(canvas);
   const unitLayer = new THREE.Group();
   unitLayer.name = "province-unit-group-ring-layer";
+  const garrisonLayer = new THREE.Group();
+  garrisonLayer.name = "province-garrison-ring-layer";
+  const marchLayer = new THREE.Group();
+  marchLayer.name = "province-march-marker-layer";
+  unitLayer.userData.garrisonLayer = garrisonLayer;
+  unitLayer.userData.marchLayer = marchLayer;
+  unitLayer.userData.lastGarrisonKey = "";
+  unitLayer.add(garrisonLayer);
+  unitLayer.add(marchLayer);
   base.scene.add(unitLayer);
 
   const raycaster = new THREE.Raycaster();
@@ -238,7 +343,6 @@ export async function createRenderer(canvas) {
   let hoveredUnitId = null;
   let localSelectedIds = new Set();
   let lastSnapshot = null;
-  let lastLayerKey = "";
 
   function pointerFromEvent(event) {
     const rect = canvas.getBoundingClientRect();
@@ -251,7 +355,7 @@ export async function createRenderer(canvas) {
     if (base.isFlyMode?.()) return null;
     pointerFromEvent(event);
     raycaster.setFromCamera(pointer, base.camera);
-    const hits = raycaster.intersectObjects(unitLayer.children, true);
+    const hits = raycaster.intersectObjects(garrisonLayer.children, true);
     for (const hit of hits) {
       let node = hit.object;
       while (node) {
@@ -280,20 +384,15 @@ export async function createRenderer(canvas) {
     hoveredUnitId = hit?.unitId ?? null;
   });
 
-  function layerKey(snapshot) {
-    const campaign = snapshot?.campaign;
-    return JSON.stringify({ units: campaign?.units, marches: campaign?.marches, selected: [...(campaign?.selectedUnitIds ?? []), ...localSelectedIds], hoveredUnitId });
-  }
-
   function draw(snapshot) {
     lastSnapshot = snapshot;
     const encounterActive = Boolean(snapshot?.campaign?.encounter?.active);
     if (encounterActive) localSelectedIds = new Set();
     unitLayer.visible = !encounterActive;
-    const key = layerKey(snapshot);
-    if (key !== lastLayerKey) {
+    if (encounterActive) {
+      clearUnitLayer(unitLayer);
+    } else {
       buildUnitLayer(unitLayer, snapshot, hoveredUnitId, localSelectedIds);
-      lastLayerKey = key;
     }
     hudPanel.textContent = summary(snapshot, localSelectedIds);
     originalDraw(snapshot);

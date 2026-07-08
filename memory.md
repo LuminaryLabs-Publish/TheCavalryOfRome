@@ -76,4 +76,6 @@
 - Intent: Replace fragile command panel buttons with map-first keyboard controls.
 - Finding: province-command-panel-kit is now a passive readout. Selecting an owned red province opens the panel; M/C switches March/Craft, number keys 1/2/3 add Light/Medium/Heavy groups, Shift+number subtracts, Enter confirms, and Esc cancels. March confirm prepares selected unit groups for a destination province click; Craft confirm queues recruitment through the strategic DSK.
 - Intent: Speed up province movement for testing.
-- Finding: Province march durations now use a 10x test-speed multiplier while preserving the existing route progress and encounter timing path.
+- Finding: Province march durations now use a 100x test-speed multiplier while preserving the existing route progress and encounter timing path.
+- Intent: Remove movement-time frame drops and make troop movement very fast for testing.
+- Finding: The army renderer now keeps cached garrison rings separate from dynamic march markers, updates moving marker transforms in place, and uses a 100x march test-speed multiplier.
