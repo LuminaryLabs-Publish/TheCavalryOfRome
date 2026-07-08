@@ -2189,21 +2189,28 @@ function terrainPoint(x, z, offset = 0) {
   return new THREE.Vector3(x, y + offset, z);
 }
 
-function encounterPalette(side) {
-  if (side === "attacker") {
-    return {
-      armorMaterial: new THREE.MeshStandardMaterial({ color: "#c73a2f", roughness: 0.56 }),
-      accentMaterial: new THREE.MeshStandardMaterial({ color: "#d8b45b", roughness: 0.42, metalness: 0.08 }),
-      skinMaterial: new THREE.MeshStandardMaterial({ color: "#b07b58", roughness: 0.7 }),
-      darkMaterial: new THREE.MeshStandardMaterial({ color: "#33261d", roughness: 0.84 })
-    };
-  }
+const ENCOUNTER_UNIT_COLORS = {
+  light: "#4f9b49",
+  medium: "#2d6ecf",
+  heavy: "#b7332a"
+};
 
+const ENCOUNTER_FEATURES = {
+  river: { color: "#35b4f0", opacity: 0.46, height: 1.5, blocksLineOfSight: false, obstacle: true },
+  road: { color: "#b07738", opacity: 0.28, height: 0.8, blocksLineOfSight: false, obstacle: false },
+  settlement: { color: "#c28b4b", opacity: 0.44, height: 18, blocksLineOfSight: true, obstacle: true },
+  landmark: { color: "#d0b463", opacity: 0.5, height: 26, blocksLineOfSight: true, obstacle: true },
+  woods: { color: "#5f7e3f", opacity: 0.32, height: 22, blocksLineOfSight: true, obstacle: false }
+};
+
+function encounterPalette(unitType = "medium", side = "attacker") {
+  const armorColor = ENCOUNTER_UNIT_COLORS[unitType] ?? ENCOUNTER_UNIT_COLORS.medium;
+  const accentColor = side === "attacker" ? "#f0d079" : "#d8dde0";
   return {
-    armorMaterial: new THREE.MeshStandardMaterial({ color: "#50626d", roughness: 0.62 }),
-    accentMaterial: new THREE.MeshStandardMaterial({ color: "#d2d6d8", roughness: 0.36, metalness: 0.1 }),
-    skinMaterial: new THREE.MeshStandardMaterial({ color: "#9f7860", roughness: 0.72 }),
-    darkMaterial: new THREE.MeshStandardMaterial({ color: "#23292c", roughness: 0.86 })
+    armorMaterial: new THREE.MeshStandardMaterial({ color: armorColor, roughness: 0.56 }),
+    accentMaterial: new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.42, metalness: 0.08 }),
+    skinMaterial: new THREE.MeshStandardMaterial({ color: side === "attacker" ? "#b07b58" : "#9f7860", roughness: 0.7 }),
+    darkMaterial: new THREE.MeshStandardMaterial({ color: "#232323", roughness: 0.84 })
   };
 }
 
@@ -2224,22 +2231,130 @@ function hexAxialToWorld(encounter, q, r, size) {
   };
 }
 
+function hexCornerPoint(encounter, center, size, side, yOffset = 8) {
+  const { forward, right } = encounterAxes(encounter);
+  const angle = (Math.PI / 6) + side * (Math.PI / 3);
+  const localX = Math.cos(angle) * size;
+  const localZ = Math.sin(angle) * size;
+  const x = center.x + right.x * localX + forward.x * localZ;
+  const z = center.z + right.z * localX + forward.z * localZ;
+  return terrainPoint(x, z, yOffset);
+}
+
+function createTerrainHexTile(encounter, q, r, size, color, opacity, yOffset = 6, renderOrder = 48) {
+  const center = hexAxialToWorld(encounter, q, r, size);
+  const centerPoint = terrainPoint(center.x, center.z, yOffset);
+  const vertices = [centerPoint.x, centerPoint.y, centerPoint.z];
+  const indices = [];
+  const outlinePoints = [];
+
+  for (let side = 0; side < 6; side += 1) {
+    const corner = hexCornerPoint(encounter, center, size, side, yOffset + 0.35);
+    vertices.push(corner.x, corner.y, corner.z);
+    outlinePoints.push(corner);
+    indices.push(0, side + 1, side === 5 ? 1 : side + 2);
+  }
+  outlinePoints.push(outlinePoints[0].clone());
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+
+  const tile = new THREE.Group();
+  const fill = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  }));
+  fill.renderOrder = renderOrder;
+  tile.add(fill);
+
+  const outline = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(outlinePoints),
+    new THREE.LineBasicMaterial({ color: "#f4e7b6", transparent: true, opacity: 0.48, depthWrite: false })
+  );
+  outline.renderOrder = renderOrder + 1;
+  tile.add(outline);
+  return tile;
+}
+
+function isNearRoad(x, z, clearance = 62) {
+  const roadGroups = [
+    ...Object.values(ROAD_PATHS),
+    ...COBBLED_PATHS,
+    ...DIRT_PATHS
+  ];
+  return roadGroups.some((path) => distanceToCurve2D(createCurve(path), x, z, 48) < clearance);
+}
+
+function isNearStronghold(x, z, clearance = 190) {
+  return REGIONAL_STRONGHOLDS.some(([baseX, baseZ]) => {
+    const dx = baseX * THEATER_SCALE - x;
+    const dz = baseZ * THEATER_SCALE - z;
+    return Math.hypot(dx, dz) < clearance;
+  });
+}
+
+function isNearSettlement(x, z, clearance = 120) {
+  for (let i = 0; i < REGIONAL_STRONGHOLDS.length; i += 1) {
+    const [baseX, baseZ] = REGIONAL_STRONGHOLDS[i];
+    const centerX = baseX * THEATER_SCALE;
+    const centerZ = baseZ * THEATER_SCALE;
+    if (Math.hypot(centerX - x, centerZ - z) < clearance * 1.8) return true;
+    for (let j = 0; j < 5; j += 1) {
+      const ring = 110 + seededRandom(i * 20 + j + 1040) * 260;
+      const angle = seededRandom(i * 20 + j + 1050) * Math.PI * 2;
+      const roadBias = seededRandom(i * 20 + j + 1060) > 0.55 ? 1.45 : 0.72;
+      const hx = centerX + Math.cos(angle) * ring * roadBias;
+      const hz = centerZ + Math.sin(angle) * ring;
+      if (Math.hypot(hx - x, hz - z) < clearance) return true;
+    }
+  }
+  return false;
+}
+
+function classifyEncounterHex(world, size) {
+  if (isNearRiver(world.x, world.z, size * 0.75)) return "river";
+  if (isNearStronghold(world.x, world.z, size * 1.55)) return "landmark";
+  if (isNearSettlement(world.x, world.z, size * 1.15)) return "settlement";
+  if (isNearRoad(world.x, world.z, size * 0.55)) return "road";
+  if (terrainSlope(world.x, world.z, size * 0.34) > 18) return "woods";
+  return null;
+}
+
+function createFeatureMarker(encounter, q, r, size, featureType) {
+  const feature = ENCOUNTER_FEATURES[featureType];
+  if (!feature) return null;
+  const world = hexAxialToWorld(encounter, q, r, size);
+  const group = new THREE.Group();
+  group.name = `encounter-feature-${featureType}`;
+  group.userData.featureType = featureType;
+  group.userData.obstacle = feature.obstacle;
+  group.userData.blocksLineOfSight = feature.blocksLineOfSight;
+  group.add(createTerrainHexTile(encounter, q, r, size * 0.94, feature.color, feature.opacity, 7, 51));
+
+  if (featureType === "settlement" || featureType === "landmark") {
+    const material = new THREE.MeshStandardMaterial({ color: feature.color, roughness: 0.78, metalness: 0.04 });
+    const block = new THREE.Mesh(
+      featureType === "landmark" ? new THREE.CylinderGeometry(size * 0.2, size * 0.28, feature.height, 6) : new THREE.BoxGeometry(size * 0.42, feature.height, size * 0.34),
+      material
+    );
+    placeOnTerrain(block, world.x, world.z, Number(encounter.bearing ?? 0) + 0.4, feature.height * 0.5 + 8);
+    block.castShadow = true;
+    group.add(block);
+  }
+
+  return group;
+}
+
 function createEncounterHexGrid(encounter) {
   const group = new THREE.Group();
   const radius = encounter.hex?.radius ?? 6;
   const size = encounter.hex?.cellSize ?? 72;
-  const hexMaterial = new THREE.LineBasicMaterial({
-    color: encounter.kind === "arrival" ? "#e5d49a" : "#9bc1d0",
-    transparent: true,
-    opacity: 0.34,
-    depthWrite: false
-  });
-  const filledMaterial = new THREE.LineBasicMaterial({
-    color: encounter.kind === "arrival" ? "#f4e7b6" : "#b9d6e0",
-    transparent: true,
-    opacity: 0.12,
-    depthWrite: false
-  });
+  group.userData.featureCells = [];
 
   for (let q = -radius; q <= radius; q += 1) {
     const rMin = Math.max(-radius, -q - radius);
@@ -2247,27 +2362,9 @@ function createEncounterHexGrid(encounter) {
 
     for (let r = rMin; r <= rMax; r += 1) {
       const world = hexAxialToWorld(encounter, q, r, size);
-      const edgePoints = [];
-      for (let side = 0; side < 6; side += 1) {
-        const angle = (Math.PI / 6) + side * (Math.PI / 3);
-        const x = world.x + Math.cos(angle) * size;
-        const z = world.z + Math.sin(angle) * size;
-        edgePoints.push(terrainPoint(x, z, 8));
-      }
-      edgePoints.push(edgePoints[0].clone());
-      const outlineGeometry = new THREE.BufferGeometry().setFromPoints(edgePoints);
-      const outline = new THREE.Line(outlineGeometry, hexMaterial.clone());
-      outline.renderOrder = 50;
-      group.add(outline);
-
-      const centerPoint = terrainPoint(world.x, world.z, 4);
-      const fillGeometry = new THREE.BufferGeometry().setFromPoints([
-        centerPoint.clone().add(new THREE.Vector3(-size * 0.4, 0, 0)),
-        centerPoint.clone().add(new THREE.Vector3(size * 0.4, 0, 0))
-      ]);
-      const fill = new THREE.Line(fillGeometry, filledMaterial.clone());
-      fill.renderOrder = 49;
-      group.add(fill);
+      const featureType = classifyEncounterHex(world, size);
+      group.add(createTerrainHexTile(encounter, q, r, size, featureType ? "#f0e4b8" : "#e9dca6", featureType ? 0.08 : 0.035, 6, 48));
+      if (featureType) group.userData.featureCells.push({ q, r, featureType });
     }
   }
 
@@ -2275,43 +2372,16 @@ function createEncounterHexGrid(encounter) {
 }
 
 function createOccupiedHexPlate(encounter, cell) {
-  const size = (encounter.board?.cellSize ?? encounter.hex?.cellSize ?? 72) * 0.82;
-  const world = hexAxialToWorld(encounter, cell.q, cell.r, encounter.board?.cellSize ?? encounter.hex?.cellSize ?? 72);
-  const points = [terrainPoint(world.x, world.z, 5.5)];
-  const vertices = [points[0].x, points[0].y, points[0].z];
-  const indices = [];
-  const { forward, right } = encounterAxes(encounter);
-
-  for (let side = 0; side < 6; side += 1) {
-    const angle = (Math.PI / 6) + side * (Math.PI / 3);
-    const localX = Math.cos(angle) * size;
-    const localZ = Math.sin(angle) * size;
-    const x = world.x + right.x * localX + forward.x * localZ;
-    const z = world.z + right.z * localX + forward.z * localZ;
-    const point = terrainPoint(x, z, 5.8);
-    vertices.push(point.x, point.y, point.z);
-    indices.push(0, side + 1, side === 5 ? 1 : side + 2);
-  }
-
-  const geometry = new THREE.BufferGeometry();
-  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setIndex(indices);
-  geometry.computeVertexNormals();
-
-  const material = new THREE.MeshBasicMaterial({
-    color: cell.side === "attacker" ? "#b93125" : "#50626d",
-    transparent: true,
-    opacity: 0.28,
-    depthWrite: false,
-    side: THREE.DoubleSide
-  });
-  const plate = new THREE.Mesh(geometry, material);
-  plate.renderOrder = 52;
+  const size = (encounter.board?.cellSize ?? encounter.hex?.cellSize ?? 72) * 0.88;
+  const color = ENCOUNTER_UNIT_COLORS[cell.unitType] ?? ENCOUNTER_UNIT_COLORS.medium;
+  const plate = createTerrainHexTile(encounter, cell.q, cell.r, size, color, 0.42, 9, 54);
+  plate.userData.unitType = cell.unitType;
+  plate.userData.side = cell.side;
   return plate;
 }
 
 function createEncounterUnitModel(unitGroup, side) {
-  const palette = encounterPalette(side);
+  const palette = encounterPalette(unitGroup.unitType, side);
   const isHeavy = unitGroup.unitType === "heavy";
   const isLight = unitGroup.unitType === "light";
   const model = isHeavy
@@ -2388,6 +2458,14 @@ function rebuildEncounterLayer(layer, encounter) {
   const hexGrid = createEncounterHexGrid(encounter);
   hexGrid.name = "encounter-hex-grid";
   layer.add(hexGrid);
+
+  const featureGroup = new THREE.Group();
+  featureGroup.name = "encounter-feature-cells";
+  for (const featureCell of hexGrid.userData.featureCells ?? []) {
+    const marker = createFeatureMarker(encounter, featureCell.q, featureCell.r, encounter.hex?.cellSize ?? 72, featureCell.featureType);
+    if (marker) featureGroup.add(marker);
+  }
+  layer.add(featureGroup);
 
   const cellGroup = new THREE.Group();
   cellGroup.name = "encounter-hex-occupants";

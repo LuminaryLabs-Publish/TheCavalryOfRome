@@ -340,10 +340,10 @@ function createEncounterState(world, state, kind, center, marchGroups, extraGrou
     engagement,
     board: null,
     camera: {
-      fov: kind === "arrival" ? 30 : 40,
-      distance: kind === "arrival" ? 420 : 520,
-      height: kind === "arrival" ? 250 : 280,
-      focusLift: kind === "arrival" ? 32 : 28,
+      fov: kind === "arrival" ? 40 : 42,
+      distance: kind === "arrival" ? 1180 : 980,
+      height: kind === "arrival" ? 860 : 690,
+      focusLift: kind === "arrival" ? 22 : 28,
       perspective: "attacker-rear"
     },
     hex,

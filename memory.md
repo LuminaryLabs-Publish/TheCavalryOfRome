@@ -79,3 +79,5 @@
 - Finding: Province march durations now use a 100x test-speed multiplier while preserving the existing route progress and encounter timing path.
 - Intent: Remove movement-time frame drops and make troop movement very fast for testing.
 - Finding: The army renderer now keeps cached garrison rings separate from dynamic march markers, updates moving marker transforms in place, and uses a 100x march test-speed multiplier.
+- Intent: Make encounter battlefields read as complete tactical boards.
+- Finding: Encounter camera framing is now further back and aerial, hexes are terrain-contoured interlocking tiles, troop cells use red/green/blue by unit type, and terrain features classify into grid obstacles, road markers, river tiles, settlements, landmarks, and line-of-sight blockers.
