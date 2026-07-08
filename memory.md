@@ -75,3 +75,5 @@
 - Finding: Added control-button-kit.js, control-panel-kit.js, and province-command-panel-kit.js. main.js now uses province-command-panel-kit instead of the old strategic-command-ui path.
 - Intent: Replace fragile command panel buttons with map-first keyboard controls.
 - Finding: province-command-panel-kit is now a passive readout. Selecting an owned red province opens the panel; M/C switches March/Craft, number keys 1/2/3 add Light/Medium/Heavy groups, Shift+number subtracts, Enter confirms, and Esc cancels. March confirm prepares selected unit groups for a destination province click; Craft confirm queues recruitment through the strategic DSK.
+- Intent: Speed up province movement for testing.
+- Finding: Province march durations now use a 10x test-speed multiplier while preserving the existing route progress and encounter timing path.

@@ -78,6 +78,7 @@ test("province marches keep route metadata and unit flavor", () => {
   const march = engine.cavalry.getState().campaign.marches[0];
   assert.equal(march.route.fromRegionId, sourceRegionId);
   assert.equal(march.route.toRegionId, "italia");
+  assert.ok(march.durationSeconds <= 120, "test march speed should keep travel under two minutes");
   assert.equal(march.units.some((unit) => unit.unitType === "heavy" && unit.mounted), true);
   assert.equal(march.units.some((unit) => unit.unitType === "light" && unit.javelins), true);
   assert.ok(march.currentPosition);

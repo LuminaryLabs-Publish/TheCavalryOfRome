@@ -61,6 +61,7 @@ const EVENT_CARD_LIBRARY = [
 
 const THEATER_SCALE = 2.55;
 const MARCH_INTERSECTION_RADIUS = 180;
+const MARCH_TEST_SPEED_MULTIPLIER = 10;
 const UNIT_TYPE_PRIORITY = { heavy: 0, medium: 1, light: 2 };
 
 function clamp(value, min, max) {
@@ -677,7 +678,8 @@ function marchDurationSeconds(campaign, fromRegionId, toRegionId, unitType) {
   const distance = regionDistance(fromRegion, toRegion);
   const distanceT = clamp(distance / maxRegionDistance(campaign), 0, 1);
   const typeFactor = UNIT_TYPES[unitType]?.speed ?? 1;
-  return clamp(Math.round((600 + distanceT * 600) * typeFactor), 420, 1200);
+  const campaignDuration = clamp(Math.round((600 + distanceT * 600) * typeFactor), 420, 1200);
+  return Math.max(1, Math.round(campaignDuration / MARCH_TEST_SPEED_MULTIPLIER));
 }
 
 function pointDistance(a, b) {
