@@ -83,3 +83,5 @@
 - Finding: Encounter camera framing is now further back and aerial, hexes are terrain-contoured interlocking tiles, troop cells use red/green/blue by unit type, and terrain features classify into grid obstacles, road markers, river tiles, settlements, landmarks, and line-of-sight blockers.
 - Intent: Fix encounter camera over-zoom and overlapping tactical hexes.
 - Finding: Feature and occupant plates were using shrunken cell sizes for axial center spacing, causing them to drift off-grid and overlap. Hex centers now keep constant grid spacing while only fill polygons shrink, and the encounter camera is farther back and higher for full-board visibility.
+- Intent: Keep tactical tiles perfectly terrain-mounted while tightening the camera.
+- Finding: Hex tiles were still planar triangle fans, so they could cut through uneven terrain between sampled corners. Tiles now use tessellated terrain-sampled fills and segmented terrain-following outlines, with the encounter camera moved closer while preserving full-board visibility.

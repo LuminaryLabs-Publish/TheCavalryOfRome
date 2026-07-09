@@ -2241,27 +2241,82 @@ function hexCornerPoint(encounter, center, size, side, yOffset = 8) {
   return terrainPoint(x, z, yOffset);
 }
 
+function terrainHexLocalPoint(axes, center, localX, localZ, yOffset) {
+  const x = center.x + axes.right.x * localX + axes.forward.x * localZ;
+  const z = center.z + axes.right.z * localX + axes.forward.z * localZ;
+  return terrainPoint(x, z, yOffset);
+}
+
 function createTerrainHexTile(encounter, q, r, size, color, opacity, yOffset = 6, renderOrder = 48, fillScale = 0.92) {
   const center = hexAxialToWorld(encounter, q, r, size);
-  const centerPoint = terrainPoint(center.x, center.z, yOffset);
-  const vertices = [centerPoint.x, centerPoint.y, centerPoint.z];
-  const indices = [];
+  const axes = encounterAxes(encounter);
+  const vertices = [];
   const outlinePoints = [];
+  const subdivisions = fillScale >= 0.85 ? 5 : 4;
 
-  for (let side = 0; side < 6; side += 1) {
-    const corner = hexCornerPoint(encounter, center, size * fillScale, side, yOffset + 0.35);
-    vertices.push(corner.x, corner.y, corner.z);
-    indices.push(0, side + 1, side === 5 ? 1 : side + 2);
+  function cornerLocal(side, scale = fillScale) {
+    const angle = (Math.PI / 6) + side * (Math.PI / 3);
+    return {
+      x: Math.cos(angle) * size * scale,
+      z: Math.sin(angle) * size * scale
+    };
+  }
+
+  function pushPoint(localX, localZ, offset = yOffset) {
+    const point = terrainHexLocalPoint(axes, center, localX, localZ, offset);
+    vertices.push(point.x, point.y, point.z);
+  }
+
+  function pushTriangle(a, b, c) {
+    pushPoint(a.x, a.z);
+    pushPoint(b.x, b.z);
+    pushPoint(c.x, c.z);
+  }
+
+  function interpolate(a, b, u, v) {
+    return {
+      x: a.x * u + b.x * v,
+      z: a.z * u + b.z * v
+    };
   }
 
   for (let side = 0; side < 6; side += 1) {
-    outlinePoints.push(hexCornerPoint(encounter, center, size, side, yOffset + 0.55));
+    const a = cornerLocal(side);
+    const b = cornerLocal((side + 1) % 6);
+    for (let i = 0; i < subdivisions; i += 1) {
+      for (let j = 0; j < subdivisions - i; j += 1) {
+        const p0 = interpolate(a, b, i / subdivisions, j / subdivisions);
+        const p1 = interpolate(a, b, (i + 1) / subdivisions, j / subdivisions);
+        const p2 = interpolate(a, b, i / subdivisions, (j + 1) / subdivisions);
+        pushTriangle(p0, p1, p2);
+
+        if (j < subdivisions - i - 1) {
+          const p3 = interpolate(a, b, (i + 1) / subdivisions, (j + 1) / subdivisions);
+          pushTriangle(p1, p3, p2);
+        }
+      }
+    }
+  }
+
+  const outlineSegments = 4;
+  for (let side = 0; side < 6; side += 1) {
+    const a = cornerLocal(side, 1);
+    const b = cornerLocal((side + 1) % 6, 1);
+    for (let step = 0; step < outlineSegments; step += 1) {
+      const t = step / outlineSegments;
+      outlinePoints.push(terrainHexLocalPoint(
+        axes,
+        center,
+        a.x * (1 - t) + b.x * t,
+        a.z * (1 - t) + b.z * t,
+        yOffset + 0.55
+      ));
+    }
   }
   outlinePoints.push(outlinePoints[0].clone());
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
-  geometry.setIndex(indices);
   geometry.computeVertexNormals();
 
   const tile = new THREE.Group();
@@ -2270,14 +2325,17 @@ function createTerrainHexTile(encounter, q, r, size, color, opacity, yOffset = 6
     transparent: true,
     opacity,
     depthWrite: false,
-    side: THREE.DoubleSide
+    side: THREE.DoubleSide,
+    polygonOffset: true,
+    polygonOffsetFactor: -4,
+    polygonOffsetUnits: -4
   }));
   fill.renderOrder = renderOrder;
   tile.add(fill);
 
   const outline = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(outlinePoints),
-    new THREE.LineBasicMaterial({ color: "#f4e7b6", transparent: true, opacity: 0.48, depthWrite: false })
+    new THREE.LineBasicMaterial({ color: "#f4e7b6", transparent: true, opacity: 0.48, depthWrite: false, depthTest: false })
   );
   outline.renderOrder = renderOrder + 1;
   tile.add(outline);
