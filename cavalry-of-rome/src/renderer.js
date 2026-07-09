@@ -2195,6 +2195,11 @@ const ENCOUNTER_UNIT_COLORS = {
   heavy: "#b7332a"
 };
 
+const ENCOUNTER_SIDE_COLORS = {
+  attacker: { banner: "#f3d36b", border: "#ffe7a4", pole: "#4a2c19", label: "gold" },
+  defender: { banner: "#151923", border: "#f2f2f2", pole: "#2b2f38", label: "black" }
+};
+
 const ENCOUNTER_FEATURES = {
   river: { color: "#35b4f0", opacity: 0.46, height: 1.5, blocksLineOfSight: false, obstacle: true },
   road: { color: "#b07738", opacity: 0.28, height: 0.8, blocksLineOfSight: false, obstacle: false },
@@ -2442,6 +2447,47 @@ function createOccupiedHexPlate(encounter, cell) {
   return plate;
 }
 
+function createArmySideMarker(side, unitType = "medium") {
+  const sideColors = ENCOUNTER_SIDE_COLORS[side] ?? ENCOUNTER_SIDE_COLORS.defender;
+  const group = new THREE.Group();
+  group.name = `encounter-${side}-army-marker`;
+  group.userData.side = side;
+
+  const pole = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.55, 0.7, 24, 5),
+    new THREE.MeshStandardMaterial({ color: sideColors.pole, roughness: 0.7 })
+  );
+  pole.position.set(-9, 20, -9);
+  pole.castShadow = true;
+  group.add(pole);
+
+  const flag = new THREE.Mesh(
+    new THREE.BoxGeometry(11, 7, 0.8),
+    new THREE.MeshStandardMaterial({ color: sideColors.banner, roughness: 0.48, metalness: side === "attacker" ? 0.1 : 0.03 })
+  );
+  flag.position.set(-3.6, 27, -9);
+  flag.castShadow = true;
+  group.add(flag);
+
+  const stripe = new THREE.Mesh(
+    new THREE.BoxGeometry(11.8, 1.6, 1),
+    new THREE.MeshBasicMaterial({ color: ENCOUNTER_UNIT_COLORS[unitType] ?? ENCOUNTER_UNIT_COLORS.medium })
+  );
+  stripe.position.set(-3.6, 27, -8.45);
+  group.add(stripe);
+
+  const ring = new THREE.Mesh(
+    new THREE.TorusGeometry(10.5, 0.9, 5, 36),
+    new THREE.MeshBasicMaterial({ color: sideColors.border, transparent: true, opacity: 0.86, depthWrite: false, depthTest: false })
+  );
+  ring.position.set(0, 2.8, 0);
+  ring.rotation.x = Math.PI / 2;
+  ring.renderOrder = 66;
+  group.add(ring);
+
+  return group;
+}
+
 function createEncounterUnitModel(unitGroup, side) {
   const palette = encounterPalette(unitGroup.unitType, side);
   const isHeavy = unitGroup.unitType === "heavy";
@@ -2549,6 +2595,7 @@ function rebuildEncounterLayer(layer, encounter) {
       child.userData.hexR = cell.r;
     });
     troop.add(model);
+    troop.add(createArmySideMarker(cell.side, cell.unitType));
     cellGroup.add(troop);
   }
   layer.add(cellGroup);

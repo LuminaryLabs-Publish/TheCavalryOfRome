@@ -89,3 +89,5 @@
 - Finding: The prior camera still prioritized battlefield context over troop readability. Arrival and intercept cameras now use a closer, lower tactical-observer framing with narrower FOV so individual unit models are easier to see.
 - Intent: Prevent terrain depth from hiding tactical hex tiles.
 - Finding: Terrain could still occlude hex fills at steep viewing angles. Hex tile fills now disable depth testing like outlines, keeping the tactical grid visible above ground while preserving render order for troops and feature markers.
+- Intent: Bring the encounter camera twice as close and distinguish opposing armies.
+- Finding: Encounter camera distance is now halved again with a narrower FOV and lower aerial height. Army side identity is now shown independently from troop type through gold attacker markers and black/white defender markers, while unit type still controls red, green, and blue troop coloring.
