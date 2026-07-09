@@ -85,3 +85,7 @@
 - Finding: Feature and occupant plates were using shrunken cell sizes for axial center spacing, causing them to drift off-grid and overlap. Hex centers now keep constant grid spacing while only fill polygons shrink, and the encounter camera is farther back and higher for full-board visibility.
 - Intent: Keep tactical tiles perfectly terrain-mounted while tightening the camera.
 - Finding: Hex tiles were still planar triangle fans, so they could cut through uneven terrain between sampled corners. Tiles now use tessellated terrain-sampled fills and segmented terrain-following outlines, with the encounter camera moved closer while preserving full-board visibility.
+- Intent: Make encounter units clearly readable from the battle camera.
+- Finding: The prior camera still prioritized battlefield context over troop readability. Arrival and intercept cameras now use a closer, lower tactical-observer framing with narrower FOV so individual unit models are easier to see.
+- Intent: Prevent terrain depth from hiding tactical hex tiles.
+- Finding: Terrain could still occlude hex fills at steep viewing angles. Hex tile fills now disable depth testing like outlines, keeping the tactical grid visible above ground while preserving render order for troops and feature markers.

@@ -2325,6 +2325,7 @@ function createTerrainHexTile(encounter, q, r, size, color, opacity, yOffset = 6
     transparent: true,
     opacity,
     depthWrite: false,
+    depthTest: false,
     side: THREE.DoubleSide,
     polygonOffset: true,
     polygonOffsetFactor: -4,
