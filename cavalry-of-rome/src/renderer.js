@@ -2938,19 +2938,24 @@ function updateBattleMarkers(group, state, elapsed) {
   }
 }
 
-function updateEncounterCamera(camera, encounter, delta) {
+function updateEncounterCamera(camera, encounter, delta, zoom = 1) {
   if (!encounter?.active) return;
 
   const bearing = Number(encounter.bearing ?? 0);
   const forward = new THREE.Vector3(Math.cos(bearing), 0, Math.sin(bearing)).normalize();
+  const baseDistance = encounter.camera?.distance ?? 420;
+  const baseHeight = encounter.camera?.height ?? 230;
+  const baseFov = encounter.camera?.fov ?? 40;
+  const zoomedDistance = baseDistance * zoom;
+  const zoomedHeight = baseHeight * zoom;
   const focus = terrainPoint(encounter.center.x, encounter.center.z, encounter.camera?.focusLift ?? 24);
   const targetPosition = focus.clone()
-    .addScaledVector(forward, -(encounter.camera?.distance ?? 420))
-    .add(new THREE.Vector3(0, encounter.camera?.height ?? 230, 0));
+    .addScaledVector(forward, -zoomedDistance)
+    .add(new THREE.Vector3(0, zoomedHeight, 0));
 
   camera.position.lerp(targetPosition, clamp(delta * 2.2, 0, 1));
   camera.lookAt(focus);
-  camera.fov = THREE.MathUtils.lerp(camera.fov, encounter.camera?.fov ?? 40, clamp(delta * 2.8, 0, 1));
+  camera.fov = THREE.MathUtils.lerp(camera.fov, clamp(baseFov + Math.log2(zoom) * 3.5, 30, 56), clamp(delta * 2.8, 0, 1));
   camera.updateProjectionMatrix();
 }
 
@@ -3012,6 +3017,8 @@ export async function createRenderer(canvas) {
   const controls = createCameraControls(camera, canvas);
   let lastSnapshot = null;
   let selectedRegionId = null;
+  let encounterZoom = 1;
+  let lastEncounterZoomKey = "";
 
   scene.fog = new THREE.FogExp2("#9ba99d", 0.00017);
   const sky = createSkyDome();
@@ -3095,9 +3102,15 @@ export async function createRenderer(canvas) {
     const encounterActive = Boolean(encounter?.active);
 
     if (!encounterActive) {
+      lastEncounterZoomKey = "";
       controls.update(delta);
     } else {
-      updateEncounterCamera(camera, encounter, delta);
+      const encounterZoomKey = `${encounter.kind ?? "encounter"}:${Math.round(encounter.center?.x ?? 0)}:${Math.round(encounter.center?.z ?? 0)}:${encounter.startedAt ?? 0}`;
+      if (encounterZoomKey !== lastEncounterZoomKey) {
+        encounterZoom = 1;
+        lastEncounterZoomKey = encounterZoomKey;
+      }
+      updateEncounterCamera(camera, encounter, delta, encounterZoom);
     }
     updateSkyDome(sky, camera);
     updateTerrain(terrain, elapsed);
@@ -3185,6 +3198,12 @@ export async function createRenderer(canvas) {
   }
 
   globalThis.addEventListener?.("resize", resize);
+  canvas.addEventListener("wheel", (event) => {
+    if (!lastSnapshot?.campaign?.encounter?.active) return;
+    event.preventDefault();
+    const wheelDirection = event.deltaY > 0 ? 1 : -1;
+    encounterZoom = clamp(encounterZoom * Math.exp(wheelDirection * 0.16), 0.45, 2.4);
+  }, { passive: false });
   resize();
 
   return {

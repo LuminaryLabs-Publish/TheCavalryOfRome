@@ -91,3 +91,5 @@
 - Finding: Terrain could still occlude hex fills at steep viewing angles. Hex tile fills now disable depth testing like outlines, keeping the tactical grid visible above ground while preserving render order for troops and feature markers.
 - Intent: Bring the encounter camera twice as close and distinguish opposing armies.
 - Finding: Encounter camera distance is now halved again with a narrower FOV and lower aerial height. Army side identity is now shown independently from troop type through gold attacker markers and black/white defender markers, while unit type still controls red, green, and blue troop coloring.
+- Intent: Let locked engagement view zoom without unlocking the tactical camera.
+- Finding: Encounter camera now tracks a renderer-level wheel zoom that only applies during active engagements. Scrolling changes distance, height, and FOV while preserving the locked rear tactical angle, and resets when a new encounter starts.
