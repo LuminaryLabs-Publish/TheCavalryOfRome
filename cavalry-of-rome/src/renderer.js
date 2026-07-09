@@ -2241,7 +2241,7 @@ function hexCornerPoint(encounter, center, size, side, yOffset = 8) {
   return terrainPoint(x, z, yOffset);
 }
 
-function createTerrainHexTile(encounter, q, r, size, color, opacity, yOffset = 6, renderOrder = 48) {
+function createTerrainHexTile(encounter, q, r, size, color, opacity, yOffset = 6, renderOrder = 48, fillScale = 0.92) {
   const center = hexAxialToWorld(encounter, q, r, size);
   const centerPoint = terrainPoint(center.x, center.z, yOffset);
   const vertices = [centerPoint.x, centerPoint.y, centerPoint.z];
@@ -2249,10 +2249,13 @@ function createTerrainHexTile(encounter, q, r, size, color, opacity, yOffset = 6
   const outlinePoints = [];
 
   for (let side = 0; side < 6; side += 1) {
-    const corner = hexCornerPoint(encounter, center, size, side, yOffset + 0.35);
+    const corner = hexCornerPoint(encounter, center, size * fillScale, side, yOffset + 0.35);
     vertices.push(corner.x, corner.y, corner.z);
-    outlinePoints.push(corner);
     indices.push(0, side + 1, side === 5 ? 1 : side + 2);
+  }
+
+  for (let side = 0; side < 6; side += 1) {
+    outlinePoints.push(hexCornerPoint(encounter, center, size, side, yOffset + 0.55));
   }
   outlinePoints.push(outlinePoints[0].clone());
 
@@ -2334,7 +2337,7 @@ function createFeatureMarker(encounter, q, r, size, featureType) {
   group.userData.featureType = featureType;
   group.userData.obstacle = feature.obstacle;
   group.userData.blocksLineOfSight = feature.blocksLineOfSight;
-  group.add(createTerrainHexTile(encounter, q, r, size * 0.94, feature.color, feature.opacity, 7, 51));
+  group.add(createTerrainHexTile(encounter, q, r, size, feature.color, feature.opacity, 7, 51, 0.72));
 
   if (featureType === "settlement" || featureType === "landmark") {
     const material = new THREE.MeshStandardMaterial({ color: feature.color, roughness: 0.78, metalness: 0.04 });
@@ -2363,7 +2366,7 @@ function createEncounterHexGrid(encounter) {
     for (let r = rMin; r <= rMax; r += 1) {
       const world = hexAxialToWorld(encounter, q, r, size);
       const featureType = classifyEncounterHex(world, size);
-      group.add(createTerrainHexTile(encounter, q, r, size, featureType ? "#f0e4b8" : "#e9dca6", featureType ? 0.08 : 0.035, 6, 48));
+      group.add(createTerrainHexTile(encounter, q, r, size, featureType ? "#f0e4b8" : "#e9dca6", featureType ? 0.08 : 0.035, 6, 48, 0.9));
       if (featureType) group.userData.featureCells.push({ q, r, featureType });
     }
   }
@@ -2372,9 +2375,9 @@ function createEncounterHexGrid(encounter) {
 }
 
 function createOccupiedHexPlate(encounter, cell) {
-  const size = (encounter.board?.cellSize ?? encounter.hex?.cellSize ?? 72) * 0.88;
+  const size = encounter.board?.cellSize ?? encounter.hex?.cellSize ?? 72;
   const color = ENCOUNTER_UNIT_COLORS[cell.unitType] ?? ENCOUNTER_UNIT_COLORS.medium;
-  const plate = createTerrainHexTile(encounter, cell.q, cell.r, size, color, 0.42, 9, 54);
+  const plate = createTerrainHexTile(encounter, cell.q, cell.r, size, color, 0.42, 9, 54, 0.62);
   plate.userData.unitType = cell.unitType;
   plate.userData.side = cell.side;
   return plate;
