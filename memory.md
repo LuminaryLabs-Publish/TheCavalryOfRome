@@ -93,3 +93,5 @@
 - Finding: Encounter camera distance is now halved again with a narrower FOV and lower aerial height. Army side identity is now shown independently from troop type through gold attacker markers and black/white defender markers, while unit type still controls red, green, and blue troop coloring.
 - Intent: Let locked engagement view zoom without unlocking the tactical camera.
 - Finding: Encounter camera now tracks a renderer-level wheel zoom that only applies during active engagements. Scrolling changes distance, height, and FOV while preserving the locked rear tactical angle, and resets when a new encounter starts.
+- Intent: Fix engagement zoom failing when scrolling over overlays instead of the canvas.
+- Finding: The prior zoom handler was canvas-only, so wheel events over HUD or command panel overlays could miss it. Wheel zoom now listens at window capture level during active encounters and exposes the current zoom for validation.

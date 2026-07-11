@@ -3197,13 +3197,16 @@ export async function createRenderer(canvas) {
     return REGIONS.find((region) => region.id === selectedRegionId) ?? null;
   }
 
-  globalThis.addEventListener?.("resize", resize);
-  canvas.addEventListener("wheel", (event) => {
+  function handleEncounterWheel(event) {
     if (!lastSnapshot?.campaign?.encounter?.active) return;
     event.preventDefault();
+    event.stopPropagation();
     const wheelDirection = event.deltaY > 0 ? 1 : -1;
     encounterZoom = clamp(encounterZoom * Math.exp(wheelDirection * 0.16), 0.45, 2.4);
-  }, { passive: false });
+  }
+
+  globalThis.addEventListener?.("resize", resize);
+  globalThis.addEventListener?.("wheel", handleEncounterWheel, { passive: false, capture: true });
   resize();
 
   return {
@@ -3214,6 +3217,7 @@ export async function createRenderer(canvas) {
     isEncounterActive: () => Boolean(lastSnapshot?.campaign?.encounter?.active),
     isFlyMode: () => controls.isLooking(),
     resize,
+    getEncounterZoom: () => encounterZoom,
     getLastSnapshot: () => lastSnapshot,
     renderer,
     scene,
