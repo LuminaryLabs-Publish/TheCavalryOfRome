@@ -8,6 +8,7 @@ import {
   advanceCavalrySequence,
   createSequenceState
 } from "./sequences.js";
+import { blockingEncounterCells } from "./encounter-terrain.js";
 
 export const CAVALRY_OF_ROME_KIT_VERSION = "0.5.0";
 
@@ -206,7 +207,7 @@ function hexRowCells(radius, r) {
   return centeredValues(values);
 }
 
-function deploymentHexes(side, count, radius, seed = "encounter") {
+function deploymentHexes(side, count, radius, seed = "encounter", blockedCells = new Set()) {
   const direction = side === "attacker" ? -1 : 1;
   const candidates = [];
 
@@ -214,6 +215,7 @@ function deploymentHexes(side, count, radius, seed = "encounter") {
   for (let depth = 1; depth <= radius; depth += 1) {
     const r = direction * depth;
     for (const q of hexRowCells(radius, r)) {
+      if (blockedCells.has(`${q},${r}`)) continue;
       candidates.push({ q, r, depth, scatter: stableHash(`${seed}:${side}:${q}:${r}`) });
     }
   }
@@ -308,16 +310,19 @@ function createOpeningEngagement(world, state, kind, participants) {
   };
 }
 
-function createEncounterBoard(participants, hex, engagement = null) {
+function createEncounterBoard(participants, encounter, engagement = null) {
+  const hex = encounter.hex;
   const radius = hex?.radius ?? 6;
   const attackerUnits = flattenEncounterUnits(participants, "attacker");
   const allDefenderUnits = flattenEncounterUnits(participants, "defender");
   const defenderUnits = engagement?.defenderDeploymentUnits ?? allDefenderUnits;
   const deploymentSeed = engagement?.deploymentSeed ?? "encounter-board";
+  const featureCells = blockingEncounterCells(encounter);
+  const blockedCells = new Set(featureCells.map((cell) => `${cell.q},${cell.r}`));
 
   const cells = [];
   const place = (side, units) => {
-    const hexes = deploymentHexes(side, units.length, radius, deploymentSeed);
+    const hexes = deploymentHexes(side, units.length, radius, deploymentSeed, blockedCells);
     for (let i = 0; i < units.length; i += 1) {
       const hexCell = hexes[i] ?? { q: 0, r: side === "attacker" ? -radius : radius };
       cells.push({
@@ -354,6 +359,8 @@ function createEncounterBoard(participants, hex, engagement = null) {
     attackerCount: attackerUnits.length,
     defenderCount: defenderUnits.length,
     defenderAvailableCount: allDefenderUnits.length,
+    featureCells,
+    blockedCells: [...blockedCells],
     cells
   };
 }
@@ -390,7 +397,7 @@ function createEncounterState(world, state, kind, center, marchGroups, extraGrou
     hex,
     title: kind === "arrival" ? "Destination encounter" : "Intercept encounter"
   };
-  encounter.board = createEncounterBoard(participants, encounter.hex, engagement);
+  encounter.board = createEncounterBoard(participants, encounter, engagement);
 
   state.campaign.encounter = encounter;
   state.campaign.selectedUnitIds = [];

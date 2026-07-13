@@ -237,6 +237,9 @@ test("arrival-triggered encounters expose opening engagement and hex troop board
   assert.ok(encounter.board.cells.filter((cell) => cell.side === "attacker").every((cell) => cell.r < 0));
   assert.ok(encounter.board.cells.filter((cell) => cell.side === "defender").every((cell) => cell.r > 0));
   assert.ok(encounter.board.cells.every((cell) => cell.r !== encounter.board.centerLine.coordinate));
+  assert.ok(encounter.board.featureCells.some((cell) => cell.type === "river"));
+  assert.ok(encounter.board.featureCells.every((cell) => cell.obstacle === true));
+  assert.ok(encounter.board.cells.every((cell) => !encounter.board.blockedCells.includes(`${cell.q},${cell.r}`)));
   assert.equal(new Set(encounter.board.cells.map((cell) => `${cell.q},${cell.r}`)).size, encounter.board.cells.length);
   assert.equal(new Set(encounter.board.cells.map((cell) => cell.unitId)).size, encounter.board.cells.length);
 });

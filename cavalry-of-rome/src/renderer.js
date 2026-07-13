@@ -1,4 +1,5 @@
 import * as THREE from "three";
+import { classifyBlockingEncounterCell } from "./encounter-terrain.js";
 
 const WORLD_SIZE = 18000;
 const TERRAIN_SEGMENTS = 520;
@@ -2252,18 +2253,12 @@ const ENCOUNTER_SIDE_COLORS = {
 };
 
 const ENCOUNTER_FEATURES = {
-  river: { color: "#239bd3", blocksLineOfSight: false, obstacle: true, movement: "impassable" },
+  river: { color: "#238fb3", blocksLineOfSight: false, obstacle: true, movement: "impassable" },
   road: { color: "#9c7245", blocksLineOfSight: false, obstacle: false, movement: "open" },
   settlement: { color: "#c59558", blocksLineOfSight: true, obstacle: true, movement: "impassable" },
   landmark: { color: "#d0b463", blocksLineOfSight: true, obstacle: true, movement: "impassable" },
   woods: { color: "#49663a", blocksLineOfSight: true, obstacle: false, movement: "difficult" }
 };
-
-const ENCOUNTER_RIVER_CURVES = [
-  { type: "river", curve: createCurve(MAIN_RIVER_POINTS) },
-  { type: "river", curve: createCurve(BRANCH_RIVER_POINTS) },
-  ...ADDITIONAL_RIVER_SYSTEMS.map((river) => ({ type: "river", curve: createCurve(river.points) }))
-];
 
 const ENCOUNTER_ROAD_CURVES = [
   ...Object.values(ROAD_PATHS).map((points) => ({ type: "road", curve: createCurve(points) })),
@@ -2460,23 +2455,9 @@ function isNearSettlement(x, z, clearance = 120) {
 
 function classifyEncounterHex(encounter, q, r, size) {
   const world = hexAxialToWorld(encounter, q, r, size);
-  const axes = encounterAxes(encounter);
-  const samples = [{ x: world.x, z: world.z }];
-  for (let side = 0; side < 6; side += 1) {
-    const angle = Math.PI / 6 + side * Math.PI / 3;
-    samples.push({
-      x: world.x + axes.right.x * Math.cos(angle) * size * 0.72 + axes.forward.x * Math.sin(angle) * size * 0.72,
-      z: world.z + axes.right.z * Math.cos(angle) * size * 0.72 + axes.forward.z * Math.sin(angle) * size * 0.72
-    });
-  }
-
-  const river = nearestEncounterCurve(ENCOUNTER_RIVER_CURVES, world.x, world.z);
-  if (river.distance <= size * 0.96 || samples.some((sample) => isNearRiver(sample.x, sample.z, size * 0.2))) {
-    return { type: "river", direction: river.angle };
-  }
+  const blockingFeature = classifyBlockingEncounterCell(encounter, q, r, size);
+  if (blockingFeature) return blockingFeature;
   const road = nearestEncounterCurve(ENCOUNTER_ROAD_CURVES, world.x, world.z);
-  if (isNearStronghold(world.x, world.z, size * 1.55)) return { type: "landmark", direction: road.angle };
-  if (isNearSettlement(world.x, world.z, size * 1.15)) return { type: "settlement", direction: road.angle };
   if (road.distance <= size * 0.86) return { type: "road", direction: road.angle };
   if (terrainSlope(world.x, world.z, size * 0.34) > 18) return { type: "woods", direction: 0 };
   return null;
@@ -2592,9 +2573,7 @@ function createFeatureMarker(encounter, q, r, size, featureCell) {
   group.userData.direction = featureCell.direction;
 
   if (featureType === "river") {
-    group.add(createTerrainHexTile(encounter, q, r, size, feature.color, 0.82, 8, 52, 0.9));
-    group.add(createTerrainFeatureRibbon(world, size, featureCell.direction, size * 0.38, "#2fb8ed", 11, 0.9));
-    group.add(createTerrainFeatureRibbon(world, size, featureCell.direction, 2.2, "#d8f6ff", 12, 0.72));
+    group.add(createTerrainHexTile(encounter, q, r, size, feature.color, 1, 10, 90, 0.92));
   } else if (featureType === "road") {
     group.add(createTerrainFeatureRibbon(world, size, featureCell.direction, size * 0.3, "#75502f", 8));
     group.add(createTerrainFeatureRibbon(world, size, featureCell.direction, size * 0.19, "#b58a55", 9));
@@ -3358,6 +3337,8 @@ export async function createRenderer(canvas) {
   const farmsteads = createOutlyingFarmsteads();
   const primeLandmarks = createPrimeLandmarks();
   const environmentDressing = createEnvironmentDressing();
+  const treeLines = createTreeLines();
+  const rockOutcrops = createRockOutcrops();
   const worldEncounterReplaceables = [
     water,
     roads,
@@ -3366,7 +3347,9 @@ export async function createRenderer(canvas) {
     villageClusters,
     farmsteads,
     primeLandmarks,
-    environmentDressing
+    environmentDressing,
+    treeLines,
+    rockOutcrops
   ];
   scene.userData.worldEncounterReplaceables = worldEncounterReplaceables;
 
@@ -3384,8 +3367,8 @@ export async function createRenderer(canvas) {
   scene.add(primeLandmarks);
   scene.add(provinceForceMarkers);
   scene.add(environmentDressing);
-  scene.add(createTreeLines());
-  scene.add(createRockOutcrops());
+  scene.add(treeLines);
+  scene.add(rockOutcrops);
   scene.add(battleMarkers);
   scene.add(encounterLayer);
 
