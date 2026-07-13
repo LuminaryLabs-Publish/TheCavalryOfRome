@@ -2073,12 +2073,28 @@ function createSoldier({ armorMaterial, accentMaterial, skinMaterial, darkMateri
   chest.castShadow = true;
   group.add(chest);
 
+  const skirt = new THREE.Mesh(new THREE.CylinderGeometry(4.8, 6.2, 5.2, 6), armorMaterial);
+  skirt.position.y = 8.4;
+  skirt.rotation.y = Math.PI / 6;
+  skirt.castShadow = true;
+  group.add(skirt);
+
+  const belt = new THREE.Mesh(new THREE.CylinderGeometry(4.3, 4.3, 1.2, 8), darkMaterial);
+  belt.position.y = 10.2;
+  group.add(belt);
+
   for (const x of [-5.4, 5.4]) {
     const arm = new THREE.Mesh(new THREE.BoxGeometry(2, 8, 2), armorMaterial);
     arm.position.set(x, 13, 0);
     arm.rotation.z = x < 0 ? 0.28 : -0.28;
     arm.castShadow = true;
     group.add(arm);
+
+    const shoulder = new THREE.Mesh(new THREE.SphereGeometry(2.2, 7, 5), accentMaterial);
+    shoulder.scale.set(1.2, 0.62, 1);
+    shoulder.position.set(x, 17, 0);
+    shoulder.castShadow = true;
+    group.add(shoulder);
   }
 
   const head = new THREE.Mesh(new THREE.DodecahedronGeometry(2.8, 0), skinMaterial);
@@ -2095,6 +2111,11 @@ function createSoldier({ armorMaterial, accentMaterial, skinMaterial, darkMateri
   crest.position.y = 26.5;
   crest.castShadow = true;
   group.add(crest);
+
+  const faceGuard = new THREE.Mesh(new THREE.BoxGeometry(0.8, 3.6, 5.2), armorMaterial);
+  faceGuard.position.set(-1.6, 21.4, 0);
+  faceGuard.castShadow = true;
+  group.add(faceGuard);
 
   const shield = new THREE.Mesh(new THREE.BoxGeometry(1.2, 8.8, 5.5), accentMaterial);
   shield.position.set(-6.8, 13, -1.2);
@@ -2113,9 +2134,10 @@ function createSoldier({ armorMaterial, accentMaterial, skinMaterial, darkMateri
   return group;
 }
 
-function createRider(material, accentMaterial) {
+function createRider(material, accentMaterial, horseColor = "#45382c") {
   const group = new THREE.Group();
-  const horseMaterial = new THREE.MeshStandardMaterial({ color: "#45382c", roughness: 0.72 });
+  const horseMaterial = new THREE.MeshStandardMaterial({ color: horseColor, roughness: 0.72 });
+  const maneMaterial = new THREE.MeshStandardMaterial({ color: "#201a17", roughness: 0.9 });
   const skinMaterial = new THREE.MeshStandardMaterial({ color: "#b8865f", roughness: 0.68 });
 
   const body = new THREE.Mesh(new THREE.BoxGeometry(16, 7, 8), horseMaterial);
@@ -2127,6 +2149,29 @@ function createRider(material, accentMaterial) {
   horseHead.position.set(9, 9, 0);
   horseHead.castShadow = true;
   group.add(horseHead);
+
+  const neck = new THREE.Mesh(new THREE.BoxGeometry(7.5, 7, 5.8), horseMaterial);
+  neck.position.set(6.2, 10.2, 0);
+  neck.rotation.z = -0.45;
+  neck.castShadow = true;
+  group.add(neck);
+
+  const mane = new THREE.Mesh(new THREE.BoxGeometry(8, 5.5, 0.9), maneMaterial);
+  mane.position.set(5.2, 13.2, 0);
+  mane.rotation.z = -0.45;
+  group.add(mane);
+
+  for (const z of [-1.5, 1.5]) {
+    const ear = new THREE.Mesh(new THREE.ConeGeometry(0.8, 3.3, 5), horseMaterial);
+    ear.position.set(9.8, 13, z);
+    ear.castShadow = true;
+    group.add(ear);
+  }
+
+  const tail = new THREE.Mesh(new THREE.ConeGeometry(1.5, 9, 6), maneMaterial);
+  tail.position.set(-9.5, 6.2, 0);
+  tail.rotation.z = Math.PI / 2.7;
+  group.add(tail);
 
   for (const x of [-5, 4]) {
     for (const z of [-3, 3]) {
@@ -2173,6 +2218,12 @@ function createRider(material, accentMaterial) {
   shield.castShadow = true;
   group.add(shield);
 
+  const lance = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.48, 30, 6), maneMaterial);
+  lance.position.set(4.5, 19, 2.8);
+  lance.rotation.z = -Math.PI / 2.25;
+  lance.castShadow = true;
+  group.add(lance);
+
   return group;
 }
 
@@ -2201,21 +2252,35 @@ const ENCOUNTER_SIDE_COLORS = {
 };
 
 const ENCOUNTER_FEATURES = {
-  river: { color: "#35b4f0", opacity: 0.46, height: 1.5, blocksLineOfSight: false, obstacle: true },
-  road: { color: "#b07738", opacity: 0.28, height: 0.8, blocksLineOfSight: false, obstacle: false },
-  settlement: { color: "#c28b4b", opacity: 0.44, height: 18, blocksLineOfSight: true, obstacle: true },
-  landmark: { color: "#d0b463", opacity: 0.5, height: 26, blocksLineOfSight: true, obstacle: true },
-  woods: { color: "#5f7e3f", opacity: 0.32, height: 22, blocksLineOfSight: true, obstacle: false }
+  river: { color: "#239bd3", blocksLineOfSight: false, obstacle: true, movement: "impassable" },
+  road: { color: "#9c7245", blocksLineOfSight: false, obstacle: false, movement: "open" },
+  settlement: { color: "#c59558", blocksLineOfSight: true, obstacle: true, movement: "impassable" },
+  landmark: { color: "#d0b463", blocksLineOfSight: true, obstacle: true, movement: "impassable" },
+  woods: { color: "#49663a", blocksLineOfSight: true, obstacle: false, movement: "difficult" }
 };
 
+const ENCOUNTER_RIVER_CURVES = [
+  { type: "river", curve: createCurve(MAIN_RIVER_POINTS) },
+  { type: "river", curve: createCurve(BRANCH_RIVER_POINTS) },
+  ...ADDITIONAL_RIVER_SYSTEMS.map((river) => ({ type: "river", curve: createCurve(river.points) }))
+];
+
+const ENCOUNTER_ROAD_CURVES = [
+  ...Object.values(ROAD_PATHS).map((points) => ({ type: "road", curve: createCurve(points) })),
+  ...COBBLED_PATHS.map((points) => ({ type: "road", curve: createCurve(points) })),
+  ...DIRT_PATHS.map((points) => ({ type: "road", curve: createCurve(points) }))
+];
+
 function encounterPalette(unitType = "medium", side = "attacker") {
-  const armorColor = ENCOUNTER_UNIT_COLORS[unitType] ?? ENCOUNTER_UNIT_COLORS.medium;
+  const armorColor = new THREE.Color(ENCOUNTER_UNIT_COLORS[unitType] ?? ENCOUNTER_UNIT_COLORS.medium);
+  if (side === "defender") armorColor.offsetHSL(0.025, -0.08, -0.18);
   const accentColor = side === "attacker" ? "#f0d079" : "#d8dde0";
   return {
     armorMaterial: new THREE.MeshStandardMaterial({ color: armorColor, roughness: 0.56 }),
     accentMaterial: new THREE.MeshStandardMaterial({ color: accentColor, roughness: 0.42, metalness: 0.08 }),
     skinMaterial: new THREE.MeshStandardMaterial({ color: side === "attacker" ? "#b07b58" : "#9f7860", roughness: 0.7 }),
-    darkMaterial: new THREE.MeshStandardMaterial({ color: "#232323", roughness: 0.84 })
+    darkMaterial: new THREE.MeshStandardMaterial({ color: side === "attacker" ? "#30251f" : "#171b20", roughness: 0.84 }),
+    horseColor: side === "attacker" ? "#7b4c2d" : "#252d35"
   };
 }
 
@@ -2325,19 +2390,23 @@ function createTerrainHexTile(encounter, q, r, size, color, opacity, yOffset = 6
   geometry.computeVertexNormals();
 
   const tile = new THREE.Group();
-  const fill = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
-    color,
-    transparent: true,
-    opacity,
-    depthWrite: false,
-    depthTest: false,
-    side: THREE.DoubleSide,
-    polygonOffset: true,
-    polygonOffsetFactor: -4,
-    polygonOffsetUnits: -4
-  }));
-  fill.renderOrder = renderOrder;
-  tile.add(fill);
+  if (opacity > 0) {
+    const fill = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({
+      color,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+      depthTest: false,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -4,
+      polygonOffsetUnits: -4
+    }));
+    fill.renderOrder = renderOrder;
+    tile.add(fill);
+  } else {
+    geometry.dispose();
+  }
 
   const outline = new THREE.Line(
     new THREE.BufferGeometry().setFromPoints(outlinePoints),
@@ -2348,13 +2417,19 @@ function createTerrainHexTile(encounter, q, r, size, color, opacity, yOffset = 6
   return tile;
 }
 
-function isNearRoad(x, z, clearance = 62) {
-  const roadGroups = [
-    ...Object.values(ROAD_PATHS),
-    ...COBBLED_PATHS,
-    ...DIRT_PATHS
-  ];
-  return roadGroups.some((path) => distanceToCurve2D(createCurve(path), x, z, 48) < clearance);
+function nearestEncounterCurve(curves, x, z, samples = 72) {
+  let best = { distance: Infinity, angle: 0, type: null };
+  for (const record of curves) {
+    for (let step = 0; step <= samples; step += 1) {
+      const t = step / samples;
+      const point = record.curve.getPoint(t);
+      const distance = Math.hypot(point.x - x, point.z - z);
+      if (distance >= best.distance) continue;
+      const tangent = record.curve.getTangent(t).normalize();
+      best = { distance, angle: Math.atan2(tangent.z, tangent.x), type: record.type };
+    }
+  }
+  return best;
 }
 
 function isNearStronghold(x, z, clearance = 190) {
@@ -2383,16 +2458,128 @@ function isNearSettlement(x, z, clearance = 120) {
   return false;
 }
 
-function classifyEncounterHex(world, size) {
-  if (isNearRiver(world.x, world.z, size * 0.75)) return "river";
-  if (isNearStronghold(world.x, world.z, size * 1.55)) return "landmark";
-  if (isNearSettlement(world.x, world.z, size * 1.15)) return "settlement";
-  if (isNearRoad(world.x, world.z, size * 0.55)) return "road";
-  if (terrainSlope(world.x, world.z, size * 0.34) > 18) return "woods";
+function classifyEncounterHex(encounter, q, r, size) {
+  const world = hexAxialToWorld(encounter, q, r, size);
+  const axes = encounterAxes(encounter);
+  const samples = [{ x: world.x, z: world.z }];
+  for (let side = 0; side < 6; side += 1) {
+    const angle = Math.PI / 6 + side * Math.PI / 3;
+    samples.push({
+      x: world.x + axes.right.x * Math.cos(angle) * size * 0.72 + axes.forward.x * Math.sin(angle) * size * 0.72,
+      z: world.z + axes.right.z * Math.cos(angle) * size * 0.72 + axes.forward.z * Math.sin(angle) * size * 0.72
+    });
+  }
+
+  const river = nearestEncounterCurve(ENCOUNTER_RIVER_CURVES, world.x, world.z);
+  if (river.distance <= size * 0.96 || samples.some((sample) => isNearRiver(sample.x, sample.z, size * 0.2))) {
+    return { type: "river", direction: river.angle };
+  }
+  const road = nearestEncounterCurve(ENCOUNTER_ROAD_CURVES, world.x, world.z);
+  if (isNearStronghold(world.x, world.z, size * 1.55)) return { type: "landmark", direction: road.angle };
+  if (isNearSettlement(world.x, world.z, size * 1.15)) return { type: "settlement", direction: road.angle };
+  if (road.distance <= size * 0.86) return { type: "road", direction: road.angle };
+  if (terrainSlope(world.x, world.z, size * 0.34) > 18) return { type: "woods", direction: 0 };
   return null;
 }
 
-function createFeatureMarker(encounter, q, r, size, featureType) {
+function createTerrainFeatureRibbon(world, size, direction, width, color, yOffset = 10, opacity = 1) {
+  const tangent = { x: Math.cos(direction), z: Math.sin(direction) };
+  const side = { x: -tangent.z, z: tangent.x };
+  const vertices = [];
+  const indices = [];
+  const segments = 10;
+  const halfLength = size * 0.72;
+
+  for (let step = 0; step <= segments; step += 1) {
+    const along = -halfLength + (halfLength * 2 * step) / segments;
+    for (const lateral of [-width * 0.5, width * 0.5]) {
+      const x = world.x + tangent.x * along + side.x * lateral;
+      const z = world.z + tangent.z * along + side.z * lateral;
+      vertices.push(x, terrainHeight(x, z) + yOffset, z);
+    }
+    if (step < segments) {
+      const a = step * 2;
+      indices.push(a, a + 1, a + 2, a + 1, a + 3, a + 2);
+    }
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.Float32BufferAttribute(vertices, 3));
+  geometry.setIndex(indices);
+  geometry.computeVertexNormals();
+  const ribbon = new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({
+    color,
+    roughness: 0.86,
+    transparent: opacity < 1,
+    opacity,
+    depthWrite: opacity >= 1,
+    polygonOffset: true,
+    polygonOffsetFactor: -5,
+    polygonOffsetUnits: -5
+  }));
+  ribbon.receiveShadow = true;
+  ribbon.renderOrder = 57;
+  return ribbon;
+}
+
+function createEncounterHouse(size) {
+  const group = new THREE.Group();
+  const stone = new THREE.MeshStandardMaterial({ color: "#d4b078", roughness: 0.92 });
+  const timber = new THREE.MeshStandardMaterial({ color: "#4d3020", roughness: 0.88 });
+  const tile = new THREE.MeshStandardMaterial({ color: "#a7432d", roughness: 0.8 });
+  const plaster = new THREE.MeshStandardMaterial({ color: "#ead6ac", roughness: 0.94 });
+
+  const foundation = new THREE.Mesh(new THREE.CylinderGeometry(size * 0.38, size * 0.4, 4, 6), stone);
+  foundation.position.y = 2;
+  foundation.receiveShadow = true;
+  group.add(foundation);
+
+  const walls = new THREE.Mesh(new THREE.BoxGeometry(size * 0.58, size * 0.34, size * 0.42), plaster);
+  walls.position.y = size * 0.2;
+  walls.castShadow = true;
+  group.add(walls);
+
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(size * 0.45, size * 0.25, 4), tile);
+  roof.position.y = size * 0.49;
+  roof.rotation.y = Math.PI / 4;
+  roof.castShadow = true;
+  group.add(roof);
+
+  const door = new THREE.Mesh(new THREE.BoxGeometry(2.5, size * 0.18, size * 0.12), timber);
+  door.position.set(size * 0.295, size * 0.13, 0);
+  group.add(door);
+  for (const z of [-size * 0.13, size * 0.13]) {
+    const beam = new THREE.Mesh(new THREE.BoxGeometry(1.7, size * 0.31, 1.7), timber);
+    beam.position.set(size * 0.298, size * 0.21, z);
+    group.add(beam);
+  }
+
+  const chimney = new THREE.Mesh(new THREE.BoxGeometry(4, size * 0.24, 4), stone);
+  chimney.position.set(-size * 0.14, size * 0.56, size * 0.1);
+  chimney.castShadow = true;
+  group.add(chimney);
+  return group;
+}
+
+function createEncounterWoods(size) {
+  const group = new THREE.Group();
+  const trunkMaterial = new THREE.MeshStandardMaterial({ color: "#493421", roughness: 0.96 });
+  const crownMaterial = new THREE.MeshStandardMaterial({ color: "#31512d", roughness: 0.9 });
+  for (const [x, z, scale] of [[-0.2, -0.08, 1], [0.18, -0.16, 0.82], [0.04, 0.2, 0.72]]) {
+    const trunk = new THREE.Mesh(new THREE.CylinderGeometry(1.2, 1.7, size * 0.28 * scale, 6), trunkMaterial);
+    trunk.position.set(size * x, size * 0.14 * scale, size * z);
+    trunk.castShadow = true;
+    group.add(trunk);
+    const crown = new THREE.Mesh(new THREE.ConeGeometry(size * 0.13 * scale, size * 0.42 * scale, 7), crownMaterial);
+    crown.position.set(size * x, size * 0.43 * scale, size * z);
+    crown.castShadow = true;
+    group.add(crown);
+  }
+  return group;
+}
+
+function createFeatureMarker(encounter, q, r, size, featureCell) {
+  const featureType = featureCell.type;
   const feature = ENCOUNTER_FEATURES[featureType];
   if (!feature) return null;
   const world = hexAxialToWorld(encounter, q, r, size);
@@ -2401,17 +2588,36 @@ function createFeatureMarker(encounter, q, r, size, featureType) {
   group.userData.featureType = featureType;
   group.userData.obstacle = feature.obstacle;
   group.userData.blocksLineOfSight = feature.blocksLineOfSight;
-  group.add(createTerrainHexTile(encounter, q, r, size, feature.color, feature.opacity, 7, 51, 0.72));
+  group.userData.movement = feature.movement;
+  group.userData.direction = featureCell.direction;
 
-  if (featureType === "settlement" || featureType === "landmark") {
-    const material = new THREE.MeshStandardMaterial({ color: feature.color, roughness: 0.78, metalness: 0.04 });
-    const block = new THREE.Mesh(
-      featureType === "landmark" ? new THREE.CylinderGeometry(size * 0.2, size * 0.28, feature.height, 6) : new THREE.BoxGeometry(size * 0.42, feature.height, size * 0.34),
-      material
-    );
-    placeOnTerrain(block, world.x, world.z, Number(encounter.bearing ?? 0) + 0.4, feature.height * 0.5 + 8);
-    block.castShadow = true;
-    group.add(block);
+  if (featureType === "river") {
+    group.add(createTerrainHexTile(encounter, q, r, size, feature.color, 0.82, 8, 52, 0.9));
+    group.add(createTerrainFeatureRibbon(world, size, featureCell.direction, size * 0.38, "#2fb8ed", 11, 0.9));
+    group.add(createTerrainFeatureRibbon(world, size, featureCell.direction, 2.2, "#d8f6ff", 12, 0.72));
+  } else if (featureType === "road") {
+    group.add(createTerrainFeatureRibbon(world, size, featureCell.direction, size * 0.3, "#75502f", 8));
+    group.add(createTerrainFeatureRibbon(world, size, featureCell.direction, size * 0.19, "#b58a55", 9));
+  } else if (featureType === "settlement") {
+    const house = createEncounterHouse(size);
+    placeUprightOnTerrain(house, world.x, world.z, -featureCell.direction, 8);
+    group.add(house);
+  } else if (featureType === "landmark") {
+    const monument = new THREE.Group();
+    const stone = new THREE.MeshStandardMaterial({ color: "#cfb77f", roughness: 0.86 });
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(size * 0.27, size * 0.34, 7, 6), stone);
+    base.position.y = 3.5;
+    monument.add(base);
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(size * 0.1, size * 0.14, size * 0.58, 8), stone);
+    column.position.y = size * 0.34;
+    column.castShadow = true;
+    monument.add(column);
+    placeUprightOnTerrain(monument, world.x, world.z, 0, 7);
+    group.add(monument);
+  } else if (featureType === "woods") {
+    const woods = createEncounterWoods(size);
+    placeUprightOnTerrain(woods, world.x, world.z, 0, 6);
+    group.add(woods);
   }
 
   return group;
@@ -2428,10 +2634,9 @@ function createEncounterHexGrid(encounter) {
     const rMax = Math.min(radius, -q + radius);
 
     for (let r = rMin; r <= rMax; r += 1) {
-      const world = hexAxialToWorld(encounter, q, r, size);
-      const featureType = classifyEncounterHex(world, size);
-      group.add(createTerrainHexTile(encounter, q, r, size, featureType ? "#f0e4b8" : "#e9dca6", featureType ? 0.08 : 0.035, 6, 48, 0.9));
-      if (featureType) group.userData.featureCells.push({ q, r, featureType });
+      const feature = classifyEncounterHex(encounter, q, r, size);
+      group.add(createTerrainHexTile(encounter, q, r, size, "#e9dca6", 0, 6, 48, 0.9));
+      if (feature) group.userData.featureCells.push({ q, r, ...feature });
     }
   }
 
@@ -2441,51 +2646,72 @@ function createEncounterHexGrid(encounter) {
 function createOccupiedHexPlate(encounter, cell) {
   const size = encounter.board?.cellSize ?? encounter.hex?.cellSize ?? 72;
   const color = ENCOUNTER_UNIT_COLORS[cell.unitType] ?? ENCOUNTER_UNIT_COLORS.medium;
-  const plate = createTerrainHexTile(encounter, cell.q, cell.r, size, color, 0.42, 9, 54, 0.62);
+  const plate = createTerrainHexTile(encounter, cell.q, cell.r, size, color, 0.5, 9, 54, 0.84);
   plate.userData.unitType = cell.unitType;
   plate.userData.side = cell.side;
   return plate;
 }
 
-function createArmySideMarker(side, unitType = "medium") {
+function createArmyStandard(side) {
   const sideColors = ENCOUNTER_SIDE_COLORS[side] ?? ENCOUNTER_SIDE_COLORS.defender;
   const group = new THREE.Group();
-  group.name = `encounter-${side}-army-marker`;
+  group.name = `encounter-${side}-army-standard`;
   group.userData.side = side;
 
   const pole = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.55, 0.7, 24, 5),
+    new THREE.CylinderGeometry(0.8, 1.05, 42, 7),
     new THREE.MeshStandardMaterial({ color: sideColors.pole, roughness: 0.7 })
   );
-  pole.position.set(-9, 20, -9);
+  pole.position.set(0, 21, 0);
   pole.castShadow = true;
   group.add(pole);
 
   const flag = new THREE.Mesh(
-    new THREE.BoxGeometry(11, 7, 0.8),
+    new THREE.BoxGeometry(20, 12, 1.2),
     new THREE.MeshStandardMaterial({ color: sideColors.banner, roughness: 0.48, metalness: side === "attacker" ? 0.1 : 0.03 })
   );
-  flag.position.set(-3.6, 27, -9);
+  flag.position.set(10, 34, 0);
   flag.castShadow = true;
   group.add(flag);
 
-  const stripe = new THREE.Mesh(
-    new THREE.BoxGeometry(11.8, 1.6, 1),
-    new THREE.MeshBasicMaterial({ color: ENCOUNTER_UNIT_COLORS[unitType] ?? ENCOUNTER_UNIT_COLORS.medium })
+  const emblem = new THREE.Mesh(
+    new THREE.CylinderGeometry(3.2, 3.2, 1.5, 8),
+    new THREE.MeshStandardMaterial({ color: sideColors.border, roughness: 0.4, metalness: 0.16 })
   );
-  stripe.position.set(-3.6, 27, -8.45);
-  group.add(stripe);
-
-  const ring = new THREE.Mesh(
-    new THREE.TorusGeometry(10.5, 0.9, 5, 36),
-    new THREE.MeshBasicMaterial({ color: sideColors.border, transparent: true, opacity: 0.86, depthWrite: false, depthTest: false })
-  );
-  ring.position.set(0, 2.8, 0);
-  ring.rotation.x = Math.PI / 2;
-  ring.renderOrder = 66;
-  group.add(ring);
+  emblem.position.set(10, 34, -1);
+  emblem.rotation.x = Math.PI / 2;
+  group.add(emblem);
 
   return group;
+}
+
+function createEncounterCenterLine(encounter) {
+  const radius = encounter.hex?.radius ?? 6;
+  const size = encounter.hex?.cellSize ?? 72;
+  const axes = encounterAxes(encounter);
+  const halfWidth = Math.sqrt(3) * size * (radius + 0.5);
+  const points = [];
+
+  for (let step = 0; step <= 48; step += 1) {
+    const lateral = -halfWidth + (halfWidth * 2 * step) / 48;
+    points.push(terrainHexLocalPoint(axes, encounter.center, lateral, 0, 12));
+  }
+
+  const line = new THREE.Mesh(
+    new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 96, 3.2, 6, false),
+    new THREE.MeshBasicMaterial({
+      color: "#fff0b0",
+      transparent: true,
+      opacity: 0.96,
+      depthTest: false,
+      depthWrite: false
+    })
+  );
+  line.name = "encounter-center-line";
+  line.renderOrder = 72;
+  line.userData.axis = encounter.board?.centerLine?.axis ?? "r";
+  line.userData.coordinate = encounter.board?.centerLine?.coordinate ?? 0;
+  return line;
 }
 
 function createEncounterUnitModel(unitGroup, side) {
@@ -2493,7 +2719,7 @@ function createEncounterUnitModel(unitGroup, side) {
   const isHeavy = unitGroup.unitType === "heavy";
   const isLight = unitGroup.unitType === "light";
   const model = isHeavy
-    ? createRider(palette.armorMaterial, palette.accentMaterial)
+    ? createRider(palette.armorMaterial, palette.accentMaterial, palette.horseColor)
     : createSoldier({
         armorMaterial: palette.armorMaterial,
         accentMaterial: palette.accentMaterial,
@@ -2502,10 +2728,49 @@ function createEncounterUnitModel(unitGroup, side) {
         weapon: isLight ? "javelin" : "spear"
       });
 
-  model.scale.setScalar(isHeavy ? 1.48 : isLight ? 1.04 : 1.2);
+  model.scale.setScalar(isHeavy ? 0.72 : isLight ? 0.84 : 0.9);
   model.userData.unitType = unitGroup.unitType;
   model.userData.side = side;
   return model;
+}
+
+function createEncounterSquadModel(unitGroup, side) {
+  const source = createEncounterUnitModel(unitGroup, side);
+  const squad = new THREE.Group();
+  const slots = [
+    [-11, -18], [-11, 0], [-11, 18],
+    [11, -18], [11, 0], [11, 18]
+  ];
+  source.updateMatrixWorld(true);
+
+  source.traverse((child) => {
+    if (!child.isMesh) return;
+    const instances = new THREE.InstancedMesh(child.geometry, child.material, slots.length);
+    const slotMatrix = new THREE.Matrix4();
+    const instanceMatrix = new THREE.Matrix4();
+    for (let index = 0; index < slots.length; index += 1) {
+      const [x, z] = slots[index];
+      slotMatrix.makeTranslation(x, 0, z);
+      instanceMatrix.multiplyMatrices(slotMatrix, child.matrixWorld);
+      instances.setMatrixAt(index, instanceMatrix);
+    }
+    instances.instanceMatrix.needsUpdate = true;
+    instances.castShadow = true;
+    instances.receiveShadow = true;
+    instances.userData.soldierCount = slots.length;
+    squad.add(instances);
+  });
+
+  squad.name = `encounter-${side}-${unitGroup.unitType}-squad`;
+  squad.userData.soldierCount = slots.length;
+  squad.userData.unitType = unitGroup.unitType;
+  squad.userData.side = side;
+  return squad;
+}
+
+function encounterFacingYaw(encounter, side) {
+  const bearing = Number(encounter.bearing ?? 0);
+  return side === "attacker" ? -bearing : -(bearing + Math.PI);
 }
 
 function createEncounterLayer() {
@@ -2532,6 +2797,7 @@ function encounterPlacement(encounter, side, index, total) {
 function clearEncounterLayer(layer) {
   for (const child of layer.children) disposeObject(child);
   layer.clear();
+  layer.userData.tacticalSummary = null;
 }
 
 function rebuildEncounterLayer(layer, encounter) {
@@ -2554,6 +2820,7 @@ function rebuildEncounterLayer(layer, encounter) {
       unitTypes: participant.unitGroups?.map((unit) => unit.unitType)
     })),
     engagement: encounter.engagement,
+    centerLine: encounter.board?.centerLine,
     board: encounter.board?.cells?.map((cell) => [cell.unitId, cell.side, cell.unitType, cell.q, cell.r])
   });
 
@@ -2566,27 +2833,30 @@ function rebuildEncounterLayer(layer, encounter) {
   const hexGrid = createEncounterHexGrid(encounter);
   hexGrid.name = "encounter-hex-grid";
   layer.add(hexGrid);
+  layer.add(createEncounterCenterLine(encounter));
 
   const featureGroup = new THREE.Group();
   featureGroup.name = "encounter-feature-cells";
   for (const featureCell of hexGrid.userData.featureCells ?? []) {
-    const marker = createFeatureMarker(encounter, featureCell.q, featureCell.r, encounter.hex?.cellSize ?? 72, featureCell.featureType);
+    const marker = createFeatureMarker(encounter, featureCell.q, featureCell.r, encounter.hex?.cellSize ?? 72, featureCell);
     if (marker) featureGroup.add(marker);
   }
   layer.add(featureGroup);
 
   const cellGroup = new THREE.Group();
   cellGroup.name = "encounter-hex-occupants";
+  const cellsBySide = { attacker: [], defender: [] };
   for (const cell of encounter.board?.cells ?? []) {
+    cellsBySide[cell.side]?.push(cell);
     const world = hexAxialToWorld(encounter, cell.q, cell.r, encounter.board?.cellSize ?? encounter.hex?.cellSize ?? 72);
     const plate = createOccupiedHexPlate(encounter, cell);
     cellGroup.add(plate);
 
     const troop = new THREE.Group();
-    const facing = cell.side === "attacker" ? Number(encounter.bearing ?? 0) : Number(encounter.bearing ?? 0) + Math.PI;
-    placeOnTerrain(troop, world.x, world.z, facing, cell.unitType === "heavy" ? 12 : 8);
-    const model = createEncounterUnitModel(cell, cell.side);
-    model.traverse((child) => {
+    const facing = encounterFacingYaw(encounter, cell.side);
+    placeUprightOnTerrain(troop, world.x, world.z, facing, cell.unitType === "heavy" ? 12 : 8);
+    const squad = createEncounterSquadModel(cell, cell.side);
+    squad.traverse((child) => {
       child.userData.unitId = cell.unitId;
       child.userData.owner = cell.owner;
       child.userData.side = cell.side;
@@ -2594,9 +2864,26 @@ function rebuildEncounterLayer(layer, encounter) {
       child.userData.hexQ = cell.q;
       child.userData.hexR = cell.r;
     });
-    troop.add(model);
-    troop.add(createArmySideMarker(cell.side, cell.unitType));
+    troop.add(squad);
     cellGroup.add(troop);
+  }
+
+  for (const side of ["attacker", "defender"]) {
+    const sideCells = cellsBySide[side];
+    if (sideCells.length === 0) continue;
+    const standardCell = [...sideCells].sort((a, b) => Math.abs(a.q) - Math.abs(b.q) || Math.abs(a.r) - Math.abs(b.r))[0];
+    const standardWorld = hexAxialToWorld(encounter, standardCell.q, standardCell.r, encounter.board?.cellSize ?? encounter.hex?.cellSize ?? 72);
+    const standardOffset = (encounter.board?.cellSize ?? encounter.hex?.cellSize ?? 72) * 0.48 * (side === "attacker" ? -1 : 1);
+    const { right } = encounterAxes(encounter);
+    const standard = createArmyStandard(side);
+    placeUprightOnTerrain(
+      standard,
+      standardWorld.x + right.x * standardOffset,
+      standardWorld.z + right.z * standardOffset,
+      encounterFacingYaw(encounter, side),
+      10
+    );
+    cellGroup.add(standard);
   }
   layer.add(cellGroup);
 
@@ -2617,6 +2904,19 @@ function rebuildEncounterLayer(layer, encounter) {
 
   layer.visible = true;
   layer.userData.lastEncounterKey = key;
+  layer.userData.tacticalSummary = {
+    squadCount: encounter.board?.cells?.length ?? 0,
+    soldiersPerSquad: 6,
+    renderedSoldierCount: (encounter.board?.cells?.length ?? 0) * 6,
+    standardCount: ["attacker", "defender"].filter((side) => cellsBySide[side].length > 0).length,
+    featureCounts: (hexGrid.userData.featureCells ?? []).reduce((counts, cell) => {
+      counts[cell.type] = (counts[cell.type] ?? 0) + 1;
+      return counts;
+    }, {}),
+    grassFillOpacity: 0,
+    worldSceneryHidden: true,
+    uprightSquads: true
+  };
 }
 
 function createBattleMarkers() {
@@ -3052,21 +3352,38 @@ export async function createRenderer(canvas) {
   const regionalStrongholds = createRegionalStrongholds();
   const provinceForceMarkers = createProvinceForceMarkers();
   const encounterLayer = createEncounterLayer();
+  const roads = createRoad();
+  const travelPaths = createDenseTravelPaths();
+  const villageClusters = createVillageClusters();
+  const farmsteads = createOutlyingFarmsteads();
+  const primeLandmarks = createPrimeLandmarks();
+  const environmentDressing = createEnvironmentDressing();
+  const worldEncounterReplaceables = [
+    water,
+    roads,
+    travelPaths,
+    regionalStrongholds,
+    villageClusters,
+    farmsteads,
+    primeLandmarks,
+    environmentDressing
+  ];
+  scene.userData.worldEncounterReplaceables = worldEncounterReplaceables;
 
   scene.add(water);
   scene.add(mist);
   scene.add(highMist);
   scene.add(endpointFog);
-  scene.add(createRoad());
-  scene.add(createDenseTravelPaths());
+  scene.add(roads);
+  scene.add(travelPaths);
   scene.add(regionSelection);
   scene.add(createRegionalBorders());
   scene.add(regionalStrongholds);
-  scene.add(createVillageClusters());
-  scene.add(createOutlyingFarmsteads());
-  scene.add(createPrimeLandmarks());
+  scene.add(villageClusters);
+  scene.add(farmsteads);
+  scene.add(primeLandmarks);
   scene.add(provinceForceMarkers);
-  scene.add(createEnvironmentDressing());
+  scene.add(environmentDressing);
   scene.add(createTreeLines());
   scene.add(createRockOutcrops());
   scene.add(battleMarkers);
@@ -3122,6 +3439,7 @@ export async function createRenderer(canvas) {
     regionalStrongholds.visible = !encounterActive;
     provinceForceMarkers.visible = !encounterActive;
     endpointFog.visible = !encounterActive;
+    for (const object of scene.userData.worldEncounterReplaceables ?? []) object.visible = !encounterActive;
     updateBattleMarkers(battleMarkers, snapshot, elapsed);
     updateRegionSelection(regionSelection, selectedRegionId);
     rebuildEncounterLayer(encounterLayer, encounter);
@@ -3218,6 +3536,7 @@ export async function createRenderer(canvas) {
     isFlyMode: () => controls.isLooking(),
     resize,
     getEncounterZoom: () => encounterZoom,
+    getEncounterRenderSummary: () => encounterLayer.userData.tacticalSummary ?? null,
     getLastSnapshot: () => lastSnapshot,
     renderer,
     scene,

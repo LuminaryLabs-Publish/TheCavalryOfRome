@@ -277,6 +277,7 @@ function addCorrectedBridges(scene) {
     made.push({ x, z }); group.add(createBridge({ x, z, river, path }));
   }
   scene.add(group);
+  scene.userData.worldEncounterReplaceables?.push(group);
 }
 function applyVisualUpgrades(scene, renderer) {
   if (scene.userData.visualUpgradeAppliedTempleRoadPass) return;

@@ -62,7 +62,6 @@ const EVENT_CARD_LIBRARY = [
 const THEATER_SCALE = 2.55;
 const MARCH_INTERSECTION_RADIUS = 180;
 const MARCH_TEST_SPEED_MULTIPLIER = 100;
-const UNIT_TYPE_PRIORITY = { heavy: 0, medium: 1, light: 2 };
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -207,21 +206,25 @@ function hexRowCells(radius, r) {
   return centeredValues(values);
 }
 
-function deploymentHexes(side, count, radius) {
-  const cells = [];
+function deploymentHexes(side, count, radius, seed = "encounter") {
   const direction = side === "attacker" ? -1 : 1;
-  let row = 0;
+  const candidates = [];
 
-  while (cells.length < count && row < radius) {
-    const r = direction * Math.min(radius, 2 + row);
+  // Keep the center row empty, then scatter each army through its own half.
+  for (let depth = 1; depth <= radius; depth += 1) {
+    const r = direction * depth;
     for (const q of hexRowCells(radius, r)) {
-      cells.push({ q, r });
-      if (cells.length >= count) break;
+      candidates.push({ q, r, depth, scatter: stableHash(`${seed}:${side}:${q}:${r}`) });
     }
-    row += 1;
   }
 
-  return cells;
+  return candidates
+    .sort((a, b) => {
+      const depthBand = Math.floor((a.depth - 1) / 2) - Math.floor((b.depth - 1) / 2);
+      return depthBand !== 0 ? depthBand : a.scatter - b.scatter;
+    })
+    .slice(0, count)
+    .map(({ q, r }) => ({ q, r }));
 }
 
 function flattenEncounterUnits(groups, side) {
@@ -236,12 +239,37 @@ function flattenEncounterUnits(groups, side) {
     })));
 }
 
-function orderDefenderUnitsForEngagement(units) {
-  return [...units].sort((a, b) => {
-    const priority = (UNIT_TYPE_PRIORITY[a.unitType] ?? 9) - (UNIT_TYPE_PRIORITY[b.unitType] ?? 9);
-    if (priority !== 0) return priority;
-    return String(a.id).localeCompare(String(b.id));
-  });
+function createDefenderDeploymentUnits(units, count, seed) {
+  const heavy = units.filter((unit) => unit.unitType === "heavy");
+  const light = units.filter((unit) => unit.unitType === "light");
+  const medium = units.filter((unit) => unit.unitType === "medium");
+  const templates = [...light, ...medium];
+  if (units.length === 0 || count <= 0) return [];
+
+  const deployed = heavy.slice(0, Math.min(heavy.length, count)).map((unit) => ({
+    ...unit,
+    deploymentSourceId: unit.id,
+    reserve: false
+  }));
+  const remaining = count - deployed.length;
+  if (remaining <= 0) return deployed;
+
+  const fallback = templates.length > 0
+    ? templates
+    : [{ ...units[0], unitType: "medium", mounted: false, javelins: false }];
+  const offset = stableHash(seed) % fallback.length;
+  for (let index = 0; index < remaining; index += 1) {
+    const template = fallback[(index + offset) % fallback.length];
+    const isOriginal = index < fallback.length;
+    deployed.push({
+      ...template,
+      id: isOriginal ? template.id : `${template.id}-reserve-${index + 1}`,
+      label: isOriginal ? template.label : `${template.label} reserve ${index + 1}`,
+      deploymentSourceId: template.id,
+      reserve: !isOriginal
+    });
+  }
+  return deployed;
 }
 
 function createOpeningEngagement(world, state, kind, participants) {
@@ -257,7 +285,12 @@ function createOpeningEngagement(world, state, kind, participants) {
     result: deterministicD6(`${state.id}:${state.campaign.turn}:${unit.id}:${world.__nexusClock.frame}:${index}`)
   }));
   const total = dice.reduce((sum, die) => sum + die.result, 0);
-  const committed = orderDefenderUnitsForEngagement(defenderUnits).slice(0, Math.min(total, defenderUnits.length));
+  const deploymentSeed = `${state.id}:${state.campaign.turn}:${world.__nexusClock.frame}:defenders`;
+  const committed = createDefenderDeploymentUnits(defenderUnits, total, deploymentSeed);
+  const defenderComposition = committed.reduce((counts, unit) => {
+    counts[unit.unitType] = (counts[unit.unitType] ?? 0) + 1;
+    return counts;
+  }, { light: 0, medium: 0, heavy: 0 });
 
   return {
     type: "opening",
@@ -268,7 +301,10 @@ function createOpeningEngagement(world, state, kind, participants) {
     defenderTroopsRequested: total,
     defenderTroopsCommitted: committed.length,
     attackerTroopsCommitted: flattenEncounterUnits(participants, "attacker").length,
-    defenderUnitIds: committed.map((unit) => unit.id)
+    defenderUnitIds: committed.map((unit) => unit.id),
+    defenderDeploymentUnits: committed,
+    defenderComposition,
+    deploymentSeed
   };
 }
 
@@ -276,14 +312,12 @@ function createEncounterBoard(participants, hex, engagement = null) {
   const radius = hex?.radius ?? 6;
   const attackerUnits = flattenEncounterUnits(participants, "attacker");
   const allDefenderUnits = flattenEncounterUnits(participants, "defender");
-  const committedDefenderIds = engagement?.defenderUnitIds ? new Set(engagement.defenderUnitIds) : null;
-  const defenderUnits = committedDefenderIds
-    ? allDefenderUnits.filter((unit) => committedDefenderIds.has(unit.id))
-    : allDefenderUnits;
+  const defenderUnits = engagement?.defenderDeploymentUnits ?? allDefenderUnits;
+  const deploymentSeed = engagement?.deploymentSeed ?? "encounter-board";
 
   const cells = [];
   const place = (side, units) => {
-    const hexes = deploymentHexes(side, units.length, radius);
+    const hexes = deploymentHexes(side, units.length, radius, deploymentSeed);
     for (let i = 0; i < units.length; i += 1) {
       const hexCell = hexes[i] ?? { q: 0, r: side === "attacker" ? -radius : radius };
       cells.push({
@@ -310,6 +344,13 @@ function createEncounterBoard(participants, hex, engagement = null) {
     radius,
     cellSize: hex?.cellSize ?? 72,
     perspective: "attacker-rear",
+    centerLine: { axis: "r", coordinate: 0 },
+    deployment: {
+      style: "scattered",
+      attackerBehind: "negative-r",
+      defenderBehind: "positive-r",
+      seed: deploymentSeed
+    },
     attackerCount: attackerUnits.length,
     defenderCount: defenderUnits.length,
     defenderAvailableCount: allDefenderUnits.length,

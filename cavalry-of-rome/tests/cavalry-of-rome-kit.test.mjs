@@ -227,10 +227,18 @@ test("arrival-triggered encounters expose opening engagement and hex troop board
   assert.equal(encounter.engagement.openingStrength, encounter.engagement.dice.reduce((sum, die) => sum + die.result, 0));
   assert.equal(encounter.engagement.attackerTroopsCommitted, 3);
   assert.equal(encounter.board.attackerCount, 3);
-  assert.equal(encounter.board.defenderCount, Math.min(encounter.engagement.openingStrength, encounter.board.defenderAvailableCount));
+  assert.equal(encounter.board.defenderCount, encounter.engagement.openingStrength);
   assert.equal(encounter.board.cells.length, encounter.board.attackerCount + encounter.board.defenderCount);
   assert.deepEqual(new Set(encounter.board.cells.filter((cell) => cell.side === "attacker").map((cell) => cell.unitType)), new Set(["light", "medium", "heavy"]));
+  assert.equal(encounter.engagement.defenderComposition.heavy, encounter.engagement.defenderHeavyCount);
+  assert.equal(encounter.engagement.defenderComposition.light + encounter.engagement.defenderComposition.medium + encounter.engagement.defenderComposition.heavy, encounter.engagement.openingStrength);
+  assert.equal(encounter.board.cells.filter((cell) => cell.side === "defender" && cell.unitType === "heavy").length, encounter.engagement.defenderHeavyCount);
+  assert.deepEqual(encounter.board.centerLine, { axis: "r", coordinate: 0 });
+  assert.ok(encounter.board.cells.filter((cell) => cell.side === "attacker").every((cell) => cell.r < 0));
+  assert.ok(encounter.board.cells.filter((cell) => cell.side === "defender").every((cell) => cell.r > 0));
+  assert.ok(encounter.board.cells.every((cell) => cell.r !== encounter.board.centerLine.coordinate));
   assert.equal(new Set(encounter.board.cells.map((cell) => `${cell.q},${cell.r}`)).size, encounter.board.cells.length);
+  assert.equal(new Set(encounter.board.cells.map((cell) => cell.unitId)).size, encounter.board.cells.length);
 });
 
 test("arrivals into empty provinces complete without an encounter", () => {
