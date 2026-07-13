@@ -8,7 +8,7 @@ import {
   advanceCavalrySequence,
   createSequenceState
 } from "./sequences.js";
-import { blockingEncounterCells } from "./encounter-terrain.js";
+import { encounterTerrainCells } from "./encounter-terrain.js";
 
 export const CAVALRY_OF_ROME_KIT_VERSION = "0.5.0";
 
@@ -317,8 +317,8 @@ function createEncounterBoard(participants, encounter, engagement = null) {
   const allDefenderUnits = flattenEncounterUnits(participants, "defender");
   const defenderUnits = engagement?.defenderDeploymentUnits ?? allDefenderUnits;
   const deploymentSeed = engagement?.deploymentSeed ?? "encounter-board";
-  const featureCells = blockingEncounterCells(encounter);
-  const blockedCells = new Set(featureCells.map((cell) => `${cell.q},${cell.r}`));
+  const featureCells = encounterTerrainCells(encounter);
+  const blockedCells = new Set(featureCells.filter((cell) => cell.obstacle).map((cell) => `${cell.q},${cell.r}`));
 
   const cells = [];
   const place = (side, units) => {

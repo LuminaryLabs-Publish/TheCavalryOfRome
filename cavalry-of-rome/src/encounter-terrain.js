@@ -10,6 +10,28 @@ const RIVER_PATHS = [
   [[-2860, -2100], [-2400, -1920], [-1920, -1640], [-1680, -860], [-1440, -420], [-1180, -120]]
 ];
 
+const ROAD_PATHS = [
+  [[900, 2480], [690, 2080], [820, 1700], [570, 1360], [360, 1100], [510, 850], [315, 610], [430, 335], [230, 60], [360, -250], [305, -590], [520, -930], [390, -1080], [650, -1540], [840, -2300]],
+  [[-1330, 2140], [-1080, 1660], [-760, 980], [-700, 690], [-650, 430], [-600, 140], [-560, -160], [-530, -510], [-500, -1010], [-610, -1540], [-830, -2120]],
+  [[115, 585], [190, 650], [275, 760], [360, 880], [520, 1040], [770, 1260]],
+  [[-2500, 1400], [-2120, 1280], [-1760, 1120], [-1420, 820], [-1120, 500], [-820, 260]],
+  [[-1940, -860], [-1620, -760], [-1260, -610], [-900, -420], [-540, -160], [-180, 120], [260, 420]],
+  [[-1030, 1740], [-660, 1640], [-300, 1500], [90, 1390], [420, 1380], [760, 1540], [1120, 1780]],
+  [[160, -1900], [440, -1640], [720, -1240], [880, -820], [1060, -450], [1330, -90]],
+  [[1060, 520], [1420, 460], [1740, 120], [1970, -430], [2180, -1540]],
+  [[2180, -1540], [2460, -1040], [2720, -420], [2860, 310], [2500, 1820]],
+  [[-2740, -1860], [-2440, -1660], [-2160, -1280], [-1900, -970], [-1680, -860]],
+  [[-2260, 1360], [-2540, 980], [-2780, 560], [-2920, 20], [-2820, -620]],
+  [[-880, 1850], [-1110, 1460], [-1300, 970], [-1480, 760], [-1680, -860]],
+  [[-260, -1960], [-30, -1560], [210, -1180], [560, -1010], [880, -820]],
+  [[420, 1380], [220, 990], [115, 585], [-130, 310], [-520, 60]],
+  [[880, -820], [1210, -1130], [1580, -1320], [2180, -1540]],
+  [[1420, 460], [1740, 760], [2100, 1080], [2500, 1820]],
+  [[-2740, -1860], [-2210, -2110], [-1660, -2240], [-910, -2160], [-260, -1960]],
+  [[-2260, 1360], [-1780, 1760], [-1280, 1990], [-880, 1850]],
+  [[420, 1380], [840, 1080], [1170, 760], [1420, 460]]
+];
+
 const LAKES = [
   { center: [-2520, -240], radiusX: 340, radiusZ: 190, rotation: 0.35 },
   { center: [3020, 760], radiusX: 420, radiusZ: 230, rotation: -0.25 },
@@ -26,6 +48,25 @@ const STRONGHOLDS = [
 
 function seededRandom(seed) {
   return Math.abs(Math.sin(seed * 12.9898) * 43758.5453) % 1;
+}
+
+function terrainHeight(x, z) {
+  const ridge = Math.sin(x * 0.0038) * 62 + Math.cos(z * 0.0031) * 58;
+  const farHills = Math.sin((x + z) * 0.00165) * 150;
+  const fineFold = Math.sin(x * 0.011 + z * 0.0045) * 19 + Math.cos(z * 0.009 - x * 0.0032) * 16;
+  const crag = Math.sin((x - z) * 0.018) * Math.cos((x + z) * 0.0085) * 11;
+  const foothillRibs = Math.sin(x * 0.026 + z * 0.013) * Math.sin(z * 0.017 - x * 0.006) * 9;
+  const erodedCuts = -18 * Math.max(0, Math.sin(x * 0.0065 + z * 0.013)) ** 2;
+  const terrace = Math.sin((ridge + farHills) * 0.18 + x * 0.002) * 5.5;
+  const valley = -165 * Math.exp(-((x + 215) ** 2) / 460000);
+  const riverCut = -74 * Math.exp(-((x + 205 + Math.sin(z * 0.0018) * 220) ** 2) / 115000);
+  const roadShelf = -18 * Math.exp(-(x ** 2) / 850000);
+  return ridge + farHills + fineFold + crag + foothillRibs + erodedCuts + terrace + valley + riverCut + roadShelf;
+}
+
+function terrainSlope(x, z, step) {
+  return Math.abs(terrainHeight(x + step, z) - terrainHeight(x - step, z))
+    + Math.abs(terrainHeight(x, z + step) - terrainHeight(x, z - step));
 }
 
 function encounterCellWorld(encounter, q, r, size) {
@@ -94,7 +135,7 @@ function settlementAt(x, z, clearance) {
   return false;
 }
 
-export function classifyBlockingEncounterCell(encounter, q, r, size) {
+export function classifyEncounterTerrainCell(encounter, q, r, size) {
   const world = encounterCellWorld(encounter, q, r, size);
   const river = nearestPathSegment(RIVER_PATHS, world.x, world.z);
   if (river.distance <= size * 0.98 || isInsideLake(world.x, world.z, size * 0.72)) {
@@ -106,10 +147,17 @@ export function classifyBlockingEncounterCell(encounter, q, r, size) {
   if (settlementAt(world.x, world.z, size * 1.15)) {
     return { type: "settlement", direction: 0, obstacle: true, movement: "impassable", blocksLineOfSight: true };
   }
+  const road = nearestPathSegment(ROAD_PATHS, world.x, world.z);
+  if (road.distance <= size * 0.86) {
+    return { type: "road", direction: road.direction, obstacle: false, movement: "open", blocksLineOfSight: false };
+  }
+  if (terrainSlope(world.x, world.z, size * 0.34) > 18) {
+    return { type: "woods", direction: 0, obstacle: true, movement: "impassable", blocksLineOfSight: true };
+  }
   return null;
 }
 
-export function blockingEncounterCells(encounter) {
+export function encounterTerrainCells(encounter) {
   const radius = encounter.hex?.radius ?? 6;
   const size = encounter.hex?.cellSize ?? 72;
   const cells = [];
@@ -117,7 +165,7 @@ export function blockingEncounterCells(encounter) {
     const rMin = Math.max(-radius, -q - radius);
     const rMax = Math.min(radius, -q + radius);
     for (let r = rMin; r <= rMax; r += 1) {
-      const feature = classifyBlockingEncounterCell(encounter, q, r, size);
+      const feature = classifyEncounterTerrainCell(encounter, q, r, size);
       if (feature) cells.push({ q, r, ...feature });
     }
   }

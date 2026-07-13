@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { classifyBlockingEncounterCell } from "./encounter-terrain.js";
+import { classifyEncounterTerrainCell } from "./encounter-terrain.js";
 
 const WORLD_SIZE = 18000;
 const TERRAIN_SEGMENTS = 520;
@@ -2253,18 +2253,12 @@ const ENCOUNTER_SIDE_COLORS = {
 };
 
 const ENCOUNTER_FEATURES = {
-  river: { color: "#238fb3", blocksLineOfSight: false, obstacle: true, movement: "impassable" },
+  river: { color: "#68cff2", blocksLineOfSight: false, obstacle: true, movement: "impassable" },
   road: { color: "#9c7245", blocksLineOfSight: false, obstacle: false, movement: "open" },
   settlement: { color: "#c59558", blocksLineOfSight: true, obstacle: true, movement: "impassable" },
   landmark: { color: "#d0b463", blocksLineOfSight: true, obstacle: true, movement: "impassable" },
-  woods: { color: "#49663a", blocksLineOfSight: true, obstacle: false, movement: "difficult" }
+  woods: { color: "#49663a", blocksLineOfSight: true, obstacle: true, movement: "impassable" }
 };
-
-const ENCOUNTER_ROAD_CURVES = [
-  ...Object.values(ROAD_PATHS).map((points) => ({ type: "road", curve: createCurve(points) })),
-  ...COBBLED_PATHS.map((points) => ({ type: "road", curve: createCurve(points) })),
-  ...DIRT_PATHS.map((points) => ({ type: "road", curve: createCurve(points) }))
-];
 
 function encounterPalette(unitType = "medium", side = "attacker") {
   const armorColor = new THREE.Color(ENCOUNTER_UNIT_COLORS[unitType] ?? ENCOUNTER_UNIT_COLORS.medium);
@@ -2412,21 +2406,6 @@ function createTerrainHexTile(encounter, q, r, size, color, opacity, yOffset = 6
   return tile;
 }
 
-function nearestEncounterCurve(curves, x, z, samples = 72) {
-  let best = { distance: Infinity, angle: 0, type: null };
-  for (const record of curves) {
-    for (let step = 0; step <= samples; step += 1) {
-      const t = step / samples;
-      const point = record.curve.getPoint(t);
-      const distance = Math.hypot(point.x - x, point.z - z);
-      if (distance >= best.distance) continue;
-      const tangent = record.curve.getTangent(t).normalize();
-      best = { distance, angle: Math.atan2(tangent.z, tangent.x), type: record.type };
-    }
-  }
-  return best;
-}
-
 function isNearStronghold(x, z, clearance = 190) {
   return REGIONAL_STRONGHOLDS.some(([baseX, baseZ]) => {
     const dx = baseX * THEATER_SCALE - x;
@@ -2454,13 +2433,7 @@ function isNearSettlement(x, z, clearance = 120) {
 }
 
 function classifyEncounterHex(encounter, q, r, size) {
-  const world = hexAxialToWorld(encounter, q, r, size);
-  const blockingFeature = classifyBlockingEncounterCell(encounter, q, r, size);
-  if (blockingFeature) return blockingFeature;
-  const road = nearestEncounterCurve(ENCOUNTER_ROAD_CURVES, world.x, world.z);
-  if (road.distance <= size * 0.86) return { type: "road", direction: road.angle };
-  if (terrainSlope(world.x, world.z, size * 0.34) > 18) return { type: "woods", direction: 0 };
-  return null;
+  return classifyEncounterTerrainCell(encounter, q, r, size);
 }
 
 function createTerrainFeatureRibbon(world, size, direction, width, color, yOffset = 10, opacity = 1) {
@@ -2501,6 +2474,34 @@ function createTerrainFeatureRibbon(world, size, direction, width, color, yOffse
   ribbon.receiveShadow = true;
   ribbon.renderOrder = 57;
   return ribbon;
+}
+
+function createWaterWaveMarks(encounter, q, r, size) {
+  const group = new THREE.Group();
+  const center = hexAxialToWorld(encounter, q, r, size);
+  const axes = encounterAxes(encounter);
+  const material = new THREE.LineBasicMaterial({
+    color: "#d9f6ff",
+    transparent: true,
+    opacity: 0.74,
+    depthTest: false,
+    depthWrite: false
+  });
+
+  for (const row of [-0.34, 0, 0.34]) {
+    const points = [];
+    for (let step = 0; step <= 16; step += 1) {
+      const progress = step / 16;
+      const localX = (progress - 0.5) * size * 1.05;
+      const localZ = row * size + Math.sin(progress * Math.PI * 3 + row * 4) * size * 0.045;
+      points.push(terrainHexLocalPoint(axes, center, localX, localZ, 12));
+    }
+    const wave = new THREE.Line(new THREE.BufferGeometry().setFromPoints(points), material);
+    wave.renderOrder = 93;
+    group.add(wave);
+  }
+  group.name = "encounter-water-waves";
+  return group;
 }
 
 function createEncounterHouse(size) {
@@ -2574,6 +2575,7 @@ function createFeatureMarker(encounter, q, r, size, featureCell) {
 
   if (featureType === "river") {
     group.add(createTerrainHexTile(encounter, q, r, size, feature.color, 1, 10, 90, 0.92));
+    group.add(createWaterWaveMarks(encounter, q, r, size));
   } else if (featureType === "road") {
     group.add(createTerrainFeatureRibbon(world, size, featureCell.direction, size * 0.3, "#75502f", 8));
     group.add(createTerrainFeatureRibbon(world, size, featureCell.direction, size * 0.19, "#b58a55", 9));
@@ -2679,7 +2681,7 @@ function createEncounterCenterLine(encounter) {
   const line = new THREE.Mesh(
     new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points), 96, 3.2, 6, false),
     new THREE.MeshBasicMaterial({
-      color: "#fff0b0",
+      color: "#711722",
       transparent: true,
       opacity: 0.96,
       depthTest: false,
