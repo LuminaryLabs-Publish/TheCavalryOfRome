@@ -1,0 +1,105 @@
+# Memory
+
+- Intent: Add GitHub Pages deployment for the static cavalry-of-rome app.
+- Finding: Git repo root is TheCavalryOfRome, so workflows must live in repo-level .github/workflows.
+- Finding: The app is a no-build static site rooted at cavalry-of-rome/index.html, so Pages can serve the folder directly.
+- Finding: cavalry-of-rome contains a nested .github folder, so Pages artifact must be staged cleanly to avoid publishing workflow files.
+- Intent: Reframe the game as a 3D-first WebGPU/WebGL experience.
+- Intent: First gameplay goal is a cinematic overlook of complex terrain.
+- Finding: Existing architecture already separates deterministic simulation from rendering, so a 3D renderer swap is feasible without rewriting the kit.
+- Intent: Attain the first goal by replacing the 2D canvas battlefield with a full-screen cinematic 3D terrain overlook.
+- Finding: Three.js 0.185.1 exposes WebGPURenderer through three/webgpu; that renderer targets WebGPU first and falls back to WebGL 2.
+- Finding: Local port 5173 was already serving another app during validation, so the correct app was verified on port 8787.
+- Intent: Improve the cinematic overlook after screenshot review showed washed-out fog, sparse terrain detail, and idle-state defeat.
+- Finding: Deployment mode should not drain morale/cohesion before the first command; the overlook must remain stable while the player explores.
+- Finding: Terrain readability improved with darker water, warmer directional light, rock outcrops, tree lines, reduced fog density, and better rider silhouettes.
+- Intent: Make camera flight reliable and replace the straight water strip with a terrain-aware natural river.
+- Finding: Camera movement now works with normalized arrow keys, and right-mouse steering works without relying solely on pointer lock.
+- Finding: River is now generated from curved terrain-sampled ribbons with banks, a branch, and subtle integrated current bands instead of floating foam strips.
+- Intent: Improve terrain quality by hiding river/path endpoints in fog, separating roads from the river, and upgrading troops into grounded full-body low-poly units.
+- Finding: River and roads now extend into dense ground fog instead of ending with exposed hard cuts.
+- Finding: Road network uses terrain-following bank/ridge paths that avoid river intersection.
+- Finding: Troops and props now sample terrain normals; soldiers have legs, armor, heads, helmets, shields, and weapons.
+- Intent: Cohesion pass to make the terrain overlook feel less finite and more authored.
+- Finding: Larger terrain footprint removed visible world-edge cuts when flying high.
+- Finding: Trees now use fixed randomized lean instead of ground-normal alignment.
+- Finding: River reeds and road shoulder stones help bind water, paths, terrain, and vegetation into one scene language.
+- Intent: Scale the overlook into a regional terrain selection map.
+- Finding: The previous pass had regional terrain dimensions but battlefield-scale camera bounds, object sizes, river widths, and prop density.
+- Finding: Terrain, rivers, roads, fog, forests, rocks, troops, and flight controls now use a larger regional footprint with smaller denser map dressing.
+- Intent: Re-scale the map toward a Risk-style theater representing an area as large as Europe.
+- Finding: The regional pass still authored routes in one-valley coordinates, so terrain size alone could not create theater-scale readability.
+- Finding: The renderer now uses a theater coordinate multiplier, continent-scale terrain frequencies, high-altitude camera bounds, and thousands of tiny instanced map props.
+- Finding: Territory border strokes and stronghold markers were added so the terrain reads as a selectable Risk-scale strategy board, not only a large landscape.
+- Intent: Fix skybox clipping and add denser province-scale settlement and army detail.
+- Finding: The sky dome was static and larger than the camera far plane, so high-altitude theater views could clip it.
+- Finding: The sky dome now follows the camera, while villages and green, blue, and red province force circles add Risk-map detail.
+- Intent: Make Risk-scale regions selectable from the terrain map.
+- Finding: The previous picker only returned battlefield lane ids, so province objects could not drive selection state.
+- Finding: Region selection now uses terrain-following province hit discs, region metadata, visible selection highlighting, and HUD feedback.
+- Intent: Invert mouse-look movement and make the Risk-scale terrain richer.
+- Finding: Mouse-look axes were still using the original steering signs, so camera movement did not match the requested inverted feel.
+- Finding: Terrain now has higher mesh resolution, erosion cuts, terraces, richer biome vertex coloring, farmland parcels, and dense scrub ground dressing.
+- Intent: Add outlying farmsteads, dense forests, prime landmarks, and immense regional strongholds.
+- Finding: Previous strongholds were still small tower pins, so they did not read as regional capitals.
+- Finding: Strongholds now use western castle and eastern temple variants, with farmsteads, dense forest patches, and prime landmarks added across the theater.
+- Intent: Fix weird stronghold rotation and make travel paths distinct from province lines.
+- Finding: Strongholds inherited full terrain-normal rotation, which tilted large castle and temple compounds incorrectly on slopes.
+- Finding: Strongholds now stay upright with yaw-only placement, province borders are blue dotted overlays, and dense cobbled/dirt paths are separate terrain-following routes.
+- Intent: Add more rivers, full lakes, shader-driven water, and revise landmarks.
+- Finding: The previous water system only had two rivers and a physical material, so it did not match the requested shader or the Europe-scale map.
+- Finding: Water now uses the provided GLSL turbulence as a reusable object shader with extra river systems, lake bodies, shoreline banks, and animated shader time.
+- Finding: Landmarks now have more entries, varied immense/small scales, and flat upright placement.
+- Finding: The WebGPU renderer rejected ShaderMaterial, so the runtime now uses WebGL2 for the requested GLSL object water shader.
+- Intent: Adapt the pasted multipass terrain shader pattern into the regional terrain renderer without losing visual quality.
+- Finding: The pasted code is a screen-space raymarch cache pattern; the efficient fit for this app is a single-pass object terrain shader over real mesh geometry.
+- Finding: Terrain now uses GLSL tri-noise turbulence, ridge quantization, height/slope biome shading, sun lighting, and distance fog in one terrain draw call.
+- Intent: Make terrain provinces directly clickable outside fly mode and show province control through colored fog.
+- Finding: Province picking previously only used small center discs and markers, so terrain clicks across most of a province could not select it.
+- Finding: Provinces now have broad irregular terrain-clinging pick surfaces, colored overhead fog by owner, and full-footprint selection highlighting.
+- Intent: Hydrology correction for lakes, bridges, and water-respecting roads.
+- Finding: Lakes should not be random map ornaments. The active wrapper now repositions lake meshes to river-end basins, searches nearby low terrain around selected river termini, keeps lake surfaces contour-following, skips endpoint caps where rivers feed lakes, generates bridges over river/path crossings, and sinks path vertices that enter lake footprints.
+- Intent: Add province army movement mechanics.
+- Finding: Army groups are currently defined by units stacked in the same province. Each province starts with 10 light, 5 medium, and 5 heavy units. The app now renders selectable army rings, supports click army ring then click destination province, and creates long terrain-theater march timers before units join the destination province stack.
+- Intent: Refine army groups into individual unit groups with multi-select.
+- Finding: A unit group now represents multiple soldiers. Each province starts with individual light, medium, and heavy unit-group records. Unit groups are rendered as separate rings; Shift-click toggles multiple unit groups into one selection, and clicking a destination province moves the selected unit groups together only if they are stacked in the same source province.
+- Intent: Visual readability pass for the large theater map.
+- Finding: The app routes through visual-upgrade-renderer.js. Biomes are applied by recoloring the terrain vertex color buffer, fog is reduced, lake UV tiling is denser, bridge correction remains active, and the runtime marker is natural-terrain-biome-color-pass-7.
+- Intent: Make monuments and roads authored into terrain/materials instead of extra visual overlays.
+- Finding: visual-upgrade-renderer.js now removes old monument terrace meshes, carves flat feathered temple/castle/palace sites directly into the terrain vertex positions under major structures, recomputes terrain normals, recolors biomes after carving, and converts all road/path ribbons to rich cobblestone materials with procedural shading. Runtime marker: terrain-carved-temples-cobblestone-roads-pass-8.
+- Intent: Begin gameplay systems using Domain Service Kit architecture.
+- Finding: Added strategic-board-game-loop-kit.js as a standalone DSK for turn number, planning/income/events phases, gold income from owned provinces, weighted event-card draws per army group, and engine.strategy API methods. main.js now installs it next to cavalry-of-rome-kit.
+- Intent: Add province command popup and world-action budget.
+- Finding: strategic-board-game-loop-kit tracks two world actions per turn, exposes spending/recruitment APIs, deducts gold, and can add crafted unit groups into the campaign state.
+- Intent: Modularize the province command panel as UI Domain Service Kits.
+- Finding: Added control-button-kit.js, control-panel-kit.js, and province-command-panel-kit.js. main.js now uses province-command-panel-kit instead of the old strategic-command-ui path.
+- Intent: Replace fragile command panel buttons with map-first keyboard controls.
+- Finding: province-command-panel-kit is now a passive readout. Selecting an owned red province opens the panel; M/C switches March/Craft, number keys 1/2/3 add Light/Medium/Heavy groups, Shift+number subtracts, Enter confirms, and Esc cancels. March confirm prepares selected unit groups for a destination province click; Craft confirm queues recruitment through the strategic DSK.
+- Intent: Speed up province movement for testing.
+- Finding: Province march durations now use a 100x test-speed multiplier while preserving the existing route progress and encounter timing path.
+- Intent: Remove movement-time frame drops and make troop movement very fast for testing.
+- Finding: The army renderer now keeps cached garrison rings separate from dynamic march markers, updates moving marker transforms in place, and uses a 100x march test-speed multiplier.
+- Intent: Make encounter battlefields read as complete tactical boards.
+- Finding: Encounter camera framing is now further back and aerial, hexes are terrain-contoured interlocking tiles, troop cells use red/green/blue by unit type, and terrain features classify into grid obstacles, road markers, river tiles, settlements, landmarks, and line-of-sight blockers.
+- Intent: Fix encounter camera over-zoom and overlapping tactical hexes.
+- Finding: Feature and occupant plates were using shrunken cell sizes for axial center spacing, causing them to drift off-grid and overlap. Hex centers now keep constant grid spacing while only fill polygons shrink, and the encounter camera is farther back and higher for full-board visibility.
+- Intent: Keep tactical tiles perfectly terrain-mounted while tightening the camera.
+- Finding: Hex tiles were still planar triangle fans, so they could cut through uneven terrain between sampled corners. Tiles now use tessellated terrain-sampled fills and segmented terrain-following outlines, with the encounter camera moved closer while preserving full-board visibility.
+- Intent: Make encounter units clearly readable from the battle camera.
+- Finding: The prior camera still prioritized battlefield context over troop readability. Arrival and intercept cameras now use a closer, lower tactical-observer framing with narrower FOV so individual unit models are easier to see.
+- Intent: Prevent terrain depth from hiding tactical hex tiles.
+- Finding: Terrain could still occlude hex fills at steep viewing angles. Hex tile fills now disable depth testing like outlines, keeping the tactical grid visible above ground while preserving render order for troops and feature markers.
+- Intent: Bring the encounter camera twice as close and distinguish opposing armies.
+- Finding: Encounter camera distance is now halved again with a narrower FOV and lower aerial height. Army side identity is now shown independently from troop type through gold attacker markers and black/white defender markers, while unit type still controls red, green, and blue troop coloring.
+- Intent: Let locked engagement view zoom without unlocking the tactical camera.
+- Finding: Encounter camera now tracks a renderer-level wheel zoom that only applies during active engagements. Scrolling changes distance, height, and FOV while preserving the locked rear tactical angle, and resets when a new encounter starts.
+- Intent: Fix engagement zoom failing when scrolling over overlays instead of the canvas.
+- Finding: The prior zoom handler was canvas-only, so wheel events over HUD or command panel overlays could miss it. Wheel zoom now listens at window capture level during active encounters and exposes the current zoom for validation.
+- Intent: Implement the preparing-troops rules for the first engagement phase.
+- Finding: Arrival encounters now commit exactly the units the attacker marched, roll one deterministic d6 per heavy defender at the destination, use the full roll total as enemy strength, fill that strength with deterministic light/medium defender slots, reserve the center hex row as a visible terrain-following center line, and scatter both armies into unique hexes behind their respective sides.
+- Intent: Replace overlapping world scenery and single-model encounter markers with readable tactical tile types and six-soldier squads.
+- Finding: Encounter mode now hides world-scale water, roads, bridges, settlements, landmarks, and dressing; grass hexes render outlines without fills; water, directional paths, houses, landmarks, and woods use tile-bounded 3D replacements with movement and sightline metadata. Occupied cells use unit-colored plates and six instanced upright troops facing the enemy, each army receives one standard, armor and horses distinguish sides, and defending heavy inventory can deploy once per available heavy roll source.
+- Intent: Make tactical water solid and prevent scenery or units from intersecting water and house cells.
+- Finding: Water now renders as one opaque flat color above other tactical overlays, global tree and rock layers hide during encounters, and shared blocked-cell classification feeds both deployment state and rendering so squads cannot spawn on rivers, lakes, houses, or landmarks.
+- Intent: Restrict engagement deployment to grass and roads, deepen the center line, and improve water readability.
+- Finding: Shared encounter terrain now marks forests as impassable while roads remain open, guaranteeing squads only occupy grass or road cells. The center line is deep red, and water uses a full opaque light-blue tile with repeated terrain-following wave marks instead of a diagonal stripe.

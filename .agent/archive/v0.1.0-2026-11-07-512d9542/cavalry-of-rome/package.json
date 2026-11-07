@@ -1,0 +1,20 @@
+{
+  "name": "nexusengine-cavalry-of-rome",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Deterministic NexusEngine/NexusRealtime-style cavalry tactics experiment set on the Sabine Road.",
+  "scripts": {
+    "start": "python3 -m http.server 5173",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "keywords": [
+    "nexusengine",
+    "nexusrealtime",
+    "deterministic-game",
+    "canvas",
+    "rome",
+    "cavalry"
+  ],
+  "license": "MIT"
+}
