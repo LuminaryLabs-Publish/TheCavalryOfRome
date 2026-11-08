@@ -1,20 +1,36 @@
 <!doctype html>
-<html lang="en"><head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#111b17">
 <title>Cavalry of Rome — War Council</title>
 <link rel="stylesheet" href="./styles.css">
 <script defer src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
 <script type="module" src="./client.mjs"></script>
-</head><body>
+</head>
+<body>
 <div class="shell">
-  <header class="masthead">
-    <div><span class="eyebrow">LUMINARY LABS / MULTIPLAYER CAMPAIGN</span><h1>CAVALRY <em>of</em> ROME</h1><p>COHORTS · SUPPLY · MOMENTUM</p></div>
-    <div class="server-status"><span id="connection-light" class="light"></span><span id="connection-status">Connecting to the match server…</span></div>
+  <header class="masthead" aria-label="Cavalry of Rome">
+    <div class="brand-lockup">
+      <span class="brand-emblem" aria-hidden="true">SPQR</span>
+      <div class="brand-wordmark">
+        <span class="eyebrow">LUMINARY LABS <span class="brand-slash">/</span> THE FRONTIER</span>
+        <h1>CAVALRY <em>of</em> ROME</h1>
+        <p>COHORTS · SUPPLY · MOMENTUM</p>
+      </div>
+    </div>
+    <div class="header-utility">
+      <button type="button" id="council-toggle" class="command-hub-toggle" aria-controls="war-council" aria-expanded="false"><span aria-hidden="true">☰</span> WAR COUNCIL</button>
+      <div class="server-status" aria-live="polite"><span id="connection-light" class="light"></span><span id="connection-status">Connecting to the match server…</span></div>
+    </div>
   </header>
+
   <div class="layout">
-    <aside class="sidebar">
-      <h2>War Council</h2>
+    <div class="council-scrim" id="council-scrim" hidden></div>
+    <aside class="sidebar" id="war-council" aria-label="War council">
+      <div class="sidebar-heading"><h2>War Council</h2><button type="button" id="council-close" class="drawer-close" aria-label="Close war council">✕</button></div>
       <div id="identity-create" class="stack">
         <label for="commander-name">Your commander name</label><input id="commander-name" maxlength="35" placeholder="Commander">
         <button id="register" class="primary">ENTER THE WAR COUNCIL</button>
@@ -28,21 +44,59 @@
         <div class="panel-header"><h3>Your battles</h3><button id="refresh-list" class="quiet">REFRESH</button></div><div id="match-list" class="match-list"><p class="muted">No battles yet.</p></div>
       </div>
     </aside>
+
     <main class="gamepanel">
-      <div id="welcome" class="welcome"><div class="laurel">❧</div><h2>Command the frontier</h2><p>Lead living formations across a sculpted hex battlefield. Play by invitation, take turns over several days, or spar against a learning commander.</p><p class="muted">A separate persistent match server is required. PeerJS makes simultaneous sessions more responsive when both players are online.</p></div>
+      <div id="welcome" class="welcome"><div class="laurel" aria-hidden="true">❧</div><span class="eyebrow">THE FRONTIER AWAITS</span><h2>Command the frontier</h2><p>Lead living formations across a sculpted 3D battlefield. Challenge a friend, return to a saved engagement, or face an opponent that learns your tactics.</p><p class="muted">Multiplayer requires the separately hosted match server. Your battles persist when you leave.</p></div>
+
       <div id="battle-ui" hidden>
-        <div class="battlebar"><div><span class="eyebrow" id="battle-role">YOUR COMMAND</span><h2 id="battle-label">Frontier engagement</h2><span id="battle-opponent" class="muted"></span></div><div class="battlebar-actions"><span id="battle-phase" class="phase-pill">AWAITING OPPONENT</span><button id="copy-invite">COPY INVITE</button></div></div>
-        <div class="battle-viewport"><canvas id="battle" aria-label="3D tactical battlefield"></canvas><div id="unit-labels" aria-hidden="true"></div><div id="hex-fallback" aria-label="Accessible tactical hex grid" hidden></div><div class="camera-tip">DRAG TO ORBIT · SCROLL TO ZOOM · SELECT A FORMATION</div><small id="render-status">PREPARING BATTLEFIELD…</small></div>
-        <div class="unit-controls"><div><span class="eyebrow">FORMATION IN FOCUS</span><strong id="selected-unit">Select a friendly formation</strong><p id="selected-description">Command any ready formation; doctrine cards are optional.</p></div><div class="unit-actions"><button id="rally">RALLY · 1 CMD</button><button id="surge">MOMENTUM SURGE · 2</button><button id="end-turn" class="primary">END ACTIVATION</button><button id="resign" class="quiet danger">CONCEDE</button><button id="return-campaign" class="primary" hidden>RETURN TO CAMPAIGN</button></div></div>
-        <section class="doctrine-section"><div class="doctrine-head"><h3>YOUR WAR COUNCIL DOCTRINES</h3><p>Play up to one doctrine per activation. Command points, not cards, authorize orders.</p></div><div id="hand" class="hand"></div></section>
-        <section class="battle-log"><div class="panel-header"><h3>Battle dispatches</h3><span id="match-version" class="muted"></span></div><div id="events" aria-live="polite"></div></section>
+        <div class="battlebar">
+          <div class="battlebar-heading"><span class="eyebrow" id="battle-role">YOUR COMMAND</span><h2 id="battle-label">Frontier engagement</h2><span id="battle-opponent" class="muted"></span></div>
+          <div class="battlebar-actions"><span id="battle-phase" class="phase-pill">AWAITING OPPONENT</span><button id="copy-invite">COPY INVITE</button></div>
+        </div>
+
+        <div class="battle-viewport" role="region" aria-label="3D tactical battlefield">
+          <canvas id="battle" aria-label="3D terrain battlefield. Drag to orbit, scroll to zoom, click a friendly formation to command it."></canvas>
+          <div id="unit-labels" aria-hidden="true"></div>
+          <div id="hex-fallback" aria-label="Tactical hex grid" hidden></div>
+          <div class="camera-tip" id="camera-tip"><span class="camera-diamond" aria-hidden="true">◇</span> DRAG TO ORBIT <span aria-hidden="true">·</span> SCROLL TO ZOOM <span aria-hidden="true">·</span> CLICK TO COMMAND</div>
+          <small id="render-status" role="status">PREPARING BATTLEFIELD…</small>
+          <div class="scene-corners" aria-hidden="true"></div>
+        </div>
+
+        <section class="unit-controls" id="unit-controls" aria-label="Formation orders">
+          <div class="formation-readout"><span class="eyebrow">✦ FORMATION IN FOCUS</span><strong id="selected-unit">Select a friendly formation</strong><p id="selected-description">Choose any ready formation. Doctrines are tactical bonuses.</p></div>
+        </section>
+        <div class="unit-actions" role="group" aria-label="Battle commands">
+            <button id="rally" title="Rally the selected formation (R)"><span class="action-glyph" aria-hidden="true">✚</span> RALLY <span class="action-cost">1 CMD</span><kbd>R</kbd></button>
+            <button id="surge" title="Spend Momentum to gain Command (M)"><span class="action-glyph" aria-hidden="true">✦</span> MOMENTUM <span class="action-cost">2</span><kbd>M</kbd></button>
+            <button id="end-turn" class="primary" title="Finish your activation (E)">END ACTIVATION <kbd>E</kbd></button>
+            <button id="resign" class="quiet danger" title="Concede the battle">CONCEDE</button>
+            <button id="return-campaign" class="primary" hidden>RETURN TO CAMPAIGN</button>
+        </div>
+
+        <section class="doctrine-section" aria-label="Doctrine hand">
+          <div class="doctrine-head"><div class="doctrine-crest" aria-hidden="true">✦</div><div><h3>WAR COUNCIL</h3><p>DOCTRINE HAND <span class="doctrine-keyhint">· 1–4 TO PLAY</span></p></div><span class="doctrine-count" id="doctrine-instruction">ONE DOCTRINE PER ACTIVATION</span></div>
+          <div id="hand" class="hand" aria-label="Your doctrine cards"></div>
+        </section>
+
+        <section class="battle-log" id="battle-log" aria-label="Battle dispatches">
+          <div class="panel-header"><button type="button" id="log-toggle" class="log-toggle" aria-controls="events" aria-expanded="false">≡ BATTLE DISPATCHES <span class="toggle-chevron" aria-hidden="true">⌄</span></button><span id="match-version" class="muted"></span></div>
+          <div id="events" aria-live="polite"></div>
+        </section>
       </div>
     </main>
-    <aside class="info-rail"><h2>Campaign intelligence</h2><div id="resources" class="resource-grid"><div><small>COMMAND</small><strong>—</strong></div><div><small>SUPPLY</small><strong>—</strong></div><div><small>MOMENTUM</small><strong>—</strong></div><div><small>ROUND</small><strong>—</strong></div></div>
-      <div class="rulecard"><h3>Combat doctrine</h3><p>Every formation may be ordered. Move for <b>1</b> Command, attack for <b>2</b>, rally for <b>1</b>. Your unit can move and attack in the same activation.</p><p>Generate Momentum by striking or securing a road. Spend 2 Momentum for +1 Command once per activation.</p></div>
+
+    <aside class="info-rail" aria-label="Command resources and battle help">
+      <h2>Campaign intelligence</h2>
+      <div id="resources" class="resource-grid" aria-label="Current battle resources">
+        <div><small>COMMAND</small><strong>—</strong></div><div><small>SUPPLY</small><strong>—</strong></div><div><small>MOMENTUM</small><strong>—</strong></div><div><small>ROUND</small><strong>—</strong></div>
+      </div>
+      <button type="button" id="rules-toggle" class="rules-toggle" aria-controls="rules-panel" aria-expanded="false">? <span>HOW TO PLAY</span></button>
+      <div class="rulecard" id="rules-panel" hidden><h3>Field Orders</h3><p>Click one of your formations to select it. Click a reachable hex to move for <b>1 Command</b>, or an enemy to attack for <b>2 Command</b>.</p><p>Gain Momentum by striking or securing a road. Spend <b>2 Momentum</b> to gain an extra Command. Play one doctrine card per activation.</p><p class="controls-note">DRAG · ORBIT <span> / </span> SCROLL · ZOOM <span> / </span> 1–4 · CARDS <span> / </span> E · END</p></div>
       <p id="status-line" class="status-line" role="status" aria-live="polite">Your next battle begins in the War Council.</p>
       <a class="quiet-link" href="../index.html">Return to the strategic single-player game</a>
     </aside>
   </div>
 </div>
-</body></html>
+</body>
+</html>

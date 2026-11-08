@@ -3,3 +3,324 @@
 /* Active single-player campaign uses the same rules/UI without account or server setup. */
 .offline-campaign .sidebar{display:none}.offline-campaign .layout{grid-template-columns:minmax(0,1fr) minmax(210px,255px)}.offline-campaign .quiet-link{display:none}
 @media(max-width:920px){.offline-campaign .layout{display:block}.offline-campaign .info-rail{display:block}}
+
+/* -----------------------------------------------------------------------
+   Battlefield HUD V2. The 3D scene is the stage; controls are a game overlay.
+   Lobby keeps its accessible, form-based layout until a match is selected.
+   ----------------------------------------------------------------------- */
+:root{
+  --game-ink:#081411;
+  --game-brass:#e8c27a;
+  --game-brass-light:#f8dfa5;
+  --game-canvas:#0d1b17;
+  --game-white:#f4ead5;
+  --glass:rgba(10,23,19,.86);
+  --hud-stroke:rgba(219,186,115,.38);
+}
+button{transition:background .15s ease,border-color .15s ease,box-shadow .15s ease,filter .15s ease}
+.brand-lockup{display:flex;align-items:center;gap:13px}
+.brand-emblem{width:43px;height:52px;display:flex;align-items:center;justify-content:center;flex:none;
+  font:700 11px Georgia,serif;letter-spacing:.05em;color:var(--game-brass-light);
+  background:linear-gradient(145deg,rgba(202,149,72,.28),rgba(52,66,48,.9));
+  border:1px solid rgba(230,190,105,.65);border-radius:6px 6px 14px 14px;
+  clip-path:polygon(0 0,100% 0,100% 78%,50% 100%,0 78%);
+  text-shadow:0 1px 4px #000;box-shadow:0 0 15px #0006}
+.brand-slash{color:#806b49;margin:0 5px}
+.header-utility{display:flex;gap:12px;align-items:center}
+.command-hub-toggle{display:none;background:linear-gradient(110deg,#283b30,#17241c);border-color:var(--hud-stroke);color:#ebd6a9}
+.sidebar-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.drawer-close{display:none;background:transparent;color:var(--game-brass-light);border-color:var(--hud-stroke);font-size:15px;width:36px;height:36px;padding:0}
+.council-scrim{position:fixed;inset:0;z-index:105;background:rgba(0,0,0,.68);backdrop-filter:blur(4px)}
+.rules-toggle{display:none;background:linear-gradient(110deg,#263a30,#16221b);border:1px solid var(--hud-stroke);color:#f1d69d}
+.rules-toggle span{margin-left:4px}
+.doctrine-crest,.doctrine-count,.doctrine-keyhint{display:none}
+.log-toggle{border:0;background:transparent;color:#e9d5aa;padding:.3rem .2rem;font-size:.7rem;letter-spacing:.12em}
+.log-toggle:hover:not(:disabled){background:transparent;color:#ffe9b9}
+.log-toggle .toggle-chevron{display:inline-block;transition:transform .2s ease}
+kbd{font:700 10px/1.6 'Trebuchet MS',sans-serif;border:1px solid #7d7959;border-radius:3px;padding:0 4px;color:#e5d29f;background:#192921;box-shadow:inset 0 -2px #101b17}
+.action-glyph,.action-cost{display:none}
+.controls-note{font-size:10px!important;letter-spacing:.05em;color:#e1b875!important}
+.controls-note span{color:#8d8e71}
+
+/* The immersive state is activated only after a match has loaded. */
+body.in-battle{height:100vh;height:100dvh;overflow:hidden;overscroll-behavior:none;background:var(--game-canvas)}
+body.in-battle .shell{height:100vh;height:100dvh;min-height:0}
+body.in-battle .masthead{position:fixed;z-index:62;left:0;right:0;top:0;
+  min-height:75px;padding:12px 22px;pointer-events:none;border:0;
+  background:linear-gradient(to bottom,rgba(6,17,14,.92),rgba(6,17,14,.6) 60%,transparent)}
+body.in-battle .masthead button{pointer-events:auto}
+body.in-battle .masthead h1{font-size:25px;letter-spacing:.05em;line-height:1;color:#f7e7c7;text-shadow:0 3px 12px #000}
+body.in-battle .masthead p{font-size:9px;letter-spacing:.24em;margin-top:6px}
+body.in-battle .masthead .eyebrow{font-size:9px;letter-spacing:.16em;color:#a8b5a0}
+body.in-battle .brand-emblem{width:42px;height:49px}
+body.in-battle .server-status{background:rgba(13,34,26,.7);border:1px solid rgba(133,167,120,.3);
+  border-radius:999px;padding:8px 12px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;box-shadow:0 4px 18px #0005}
+body.in-battle .light{width:6px;height:6px}
+body.in-battle:not(.offline-campaign) .command-hub-toggle{display:inline-flex;align-items:center;gap:9px}
+body.in-battle .layout{display:block;position:fixed;inset:0;min-height:0;max-width:none;margin:0;width:100%;height:100%}
+body.in-battle .gamepanel{display:block;position:absolute;inset:0;background:var(--game-canvas);min-width:0}
+body.in-battle #battle-ui{position:absolute;inset:0;width:100%;height:100%}
+body.in-battle #welcome{display:none}
+body.in-battle .battle-viewport{position:absolute;inset:0;width:100%;height:100%;overflow:hidden;border:0;
+  background:radial-gradient(ellipse at 50% 30%,#456a55,#1b3027 72%,#0b1b15)}
+body.in-battle .battle-viewport canvas{width:100%;height:100%}
+body.in-battle .battle-viewport::after{content:"";position:absolute;inset:0;z-index:4;pointer-events:none;
+  background:linear-gradient(180deg,rgba(4,12,11,.40),transparent 18%,transparent 63%,rgba(4,13,10,.69) 100%),
+             radial-gradient(ellipse 84% 85% at 50% 40%,transparent 43%,rgba(3,10,8,.55) 100%)}
+body.in-battle .scene-corners{position:absolute;inset:15px;z-index:6;pointer-events:none;
+  border:1px solid rgba(215,190,125,.09);
+  background:linear-gradient(to right,#bda16d 0 21px,transparent 21px) left top/70px 1px no-repeat,
+             linear-gradient(to bottom,#bda16d 0 21px,transparent 21px) left top/1px 70px no-repeat,
+             linear-gradient(to left,#bda16d 0 21px,transparent 21px) right bottom/70px 1px no-repeat,
+             linear-gradient(to top,#bda16d 0 21px,transparent 21px) right bottom/1px 70px no-repeat;opacity:.48}
+body.in-battle .battle-viewport #unit-labels{z-index:7}
+body.in-battle .battle-viewport .unit-label{border-radius:4px;padding:5px 7px;color:#fff5df;font-size:11px;
+  font-weight:700;letter-spacing:.03em;background:rgba(9,23,18,.8);border:1px solid rgba(235,203,137,.32);
+  box-shadow:0 3px 16px #0008;white-space:nowrap;max-width:165px;overflow:hidden;text-overflow:ellipsis}
+body.in-battle .camera-tip{z-index:8;top:auto;right:auto;left:50%;bottom:320px;transform:translateX(-50%);
+  font:700 10px/1.2 'Trebuchet MS',sans-serif;letter-spacing:.11em;white-space:nowrap;
+  border:1px solid rgba(218,196,139,.26);background:rgba(8,22,18,.73);padding:8px 14px;
+  border-radius:100px;color:#e0d6bd;backdrop-filter:blur(6px)}
+body.in-battle .camera-diamond{color:#efc77e;margin-right:7px}
+body.in-battle .battle-viewport #render-status{z-index:8;top:87px;left:22px;bottom:auto;
+  background:rgba(8,24,19,.68);color:#a9bcab;border:1px solid rgba(182,194,154,.18);
+  border-radius:4px;padding:6px 9px;font:600 9px/1.3 'Trebuchet MS',sans-serif;letter-spacing:.09em}
+body.in-battle #hex-fallback{z-index:1}
+
+/* Center battlefield phase banner, not a boxed web-app toolbar. */
+body.in-battle .battlebar{position:fixed;top:19px;left:50%;transform:translateX(-50%);z-index:57;
+  display:flex;align-items:center;justify-content:center;gap:17px;padding:0;width:clamp(370px,36vw,630px);
+  border:0;background:transparent;text-align:center;pointer-events:none}
+body.in-battle .battlebar-heading{min-width:0}
+body.in-battle .battlebar h2{margin:3px 0 2px;color:#f3dfbb;font-size:clamp(17px,1.45vw,24px);
+  font-family:Georgia,serif;font-weight:700;line-height:1.13;text-shadow:0 2px 14px #000}
+body.in-battle .battlebar .eyebrow{font-size:9px;letter-spacing:.19em;color:#dfbf80}
+body.in-battle .battlebar .muted{font-size:11px;color:#b9c8b3}
+body.in-battle .battlebar-actions{pointer-events:auto;flex-shrink:0}
+body.in-battle .phase-pill{display:inline-flex;align-items:center;justify-content:center;
+  min-height:32px;padding:7px 10px;white-space:nowrap;font-size:9px;letter-spacing:.12em;
+  color:#2c281b;background:linear-gradient(135deg,#e1bd72,#f5d896);border:1px solid #f9dc9e;
+  box-shadow:0 0 21px rgba(206,163,75,.24);clip-path:polygon(0 0,100% 0,100% 100%,0 100%)}
+body.in-battle #copy-invite{font-size:10px;padding:9px;background:rgba(24,44,33,.85);color:#f4d79b}
+
+/* Top-right four-slot commander resource HUD. */
+body.in-battle .info-rail{position:fixed;z-index:59;top:85px;right:20px;width:334px;max-width:calc(100vw - 35px);
+  padding:0;background:transparent;border:0;display:block;overflow:visible;pointer-events:none}
+body.in-battle .info-rail h2{display:none}
+body.in-battle .resource-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;
+  padding:7px;background:rgba(7,22,18,.82);border:1px solid var(--hud-stroke);
+  border-radius:8px;box-shadow:0 6px 22px #0008;backdrop-filter:blur(10px)}
+body.in-battle .resource-grid div{height:65px;min-width:0;padding:7px 2px 5px;text-align:center;
+  background:linear-gradient(180deg,rgba(72,84,54,.55),rgba(23,39,32,.6));border:1px solid rgba(192,164,100,.2);
+  border-radius:4px;box-shadow:inset 0 1px rgba(240,222,166,.08)}
+body.in-battle .resource-grid small{font:700 9px/1.2 'Trebuchet MS',sans-serif;letter-spacing:.085em;color:#c1cbb6}
+body.in-battle .resource-grid strong{font:700 25px/1 Georgia,serif;color:#efd49d;margin:5px 0 0;text-shadow:0 1px 10px #000}
+body.in-battle .rules-toggle{pointer-events:auto;display:flex;align-items:center;justify-content:center;gap:6px;
+  position:absolute;top:90px;right:0;padding:7px 11px;font-size:10px;letter-spacing:.08em;
+  border-radius:6px;background:rgba(8,27,19,.82)}
+body.in-battle .rules-toggle:hover{background:#2b4335}
+body.in-battle .rulecard{pointer-events:auto;position:absolute;top:126px;right:0;width:min(334px,88vw);
+  margin:0;padding:14px 16px;background:rgba(10,24,19,.95);border:1px solid var(--hud-stroke);
+  border-radius:9px;box-shadow:0 12px 45px #0009;backdrop-filter:blur(14px)}
+body.in-battle .rulecard h3{margin:0 0 9px;color:#e9c382;font:700 16px Georgia,serif;letter-spacing:0}
+body.in-battle .rulecard p{color:#d1d6c4;font-size:12px;line-height:1.55;margin:7px 0}
+body.in-battle .status-line{pointer-events:none;position:fixed;left:25px;bottom:252px;width:min(355px,28vw);
+  padding:11px 14px;margin:0;border-left:2px solid rgba(224,183,113,.85);
+  background:linear-gradient(90deg,rgba(8,24,18,.88),rgba(8,24,18,.4));
+  box-shadow:0 5px 24px #0008;color:#e8dcbd;font-size:12px;line-height:1.4;
+  backdrop-filter:blur(7px);text-shadow:0 1px 2px #000}
+body.in-battle .quiet-link{display:none}
+
+/* An individual formation is the player's focus, anchored to the battlefield. */
+body.in-battle .unit-controls{position:fixed;left:24px;bottom:32px;z-index:56;display:block;
+  width:280px;min-height:140px;padding:18px 16px 18px 20px;
+  background:linear-gradient(125deg,rgba(15,34,27,.94),rgba(10,23,20,.82));
+  border:1px solid rgba(211,173,104,.45);border-left:3px solid #dfb86d;
+  border-radius:8px 12px 12px 8px;box-shadow:0 10px 30px #000b;backdrop-filter:blur(10px)}
+body.in-battle .unit-controls:before{content:"";position:absolute;left:-3px;top:18px;width:3px;height:34px;background:#f7d899;box-shadow:0 0 18px #f6c56d}
+body.in-battle .formation-readout .eyebrow{color:#c7b37e;font-size:10px;letter-spacing:.13em}
+body.in-battle .formation-readout strong{font:700 20px/1.13 Georgia,serif;color:#f3e3c4;margin:12px 0 8px}
+body.in-battle .formation-readout p{color:#c3ccbb;font:500 12px/1.5 'Trebuchet MS',sans-serif;letter-spacing:0}
+body.in-battle .unit-actions{position:fixed;z-index:57;bottom:32px;right:24px;width:268px;
+  display:grid;grid-template-columns:1fr 1fr;gap:7px;pointer-events:auto}
+body.in-battle .unit-actions button{position:relative;border-radius:6px;text-align:center;
+  min-height:39px;padding:9px 7px;color:#e9dfc7;background:linear-gradient(180deg,rgba(35,56,43,.96),rgba(14,30,23,.96));
+  border:1px solid rgba(187,171,124,.35);box-shadow:0 4px 13px #0006;font-size:10px;letter-spacing:.04em}
+body.in-battle .unit-actions button:not(:disabled):hover{background:#445a42;border-color:#efc47c}
+body.in-battle .unit-actions button:disabled{opacity:.52}
+body.in-battle .unit-actions .primary{color:#241c0e;background:linear-gradient(135deg,#e8b968,#f7dd97);border-color:#f7d995;
+  font-size:12px;text-shadow:none;box-shadow:0 0 16px rgba(235,179,82,.21),0 5px 18px #0008}
+body.in-battle .unit-actions .primary:hover:not(:disabled){background:linear-gradient(135deg,#f5d38b,#ffe8ac)}
+body.in-battle .unit-actions #end-turn,body.in-battle .unit-actions #return-campaign{grid-column:1/-1;min-height:49px;display:flex;justify-content:center;align-items:center;gap:12px}
+body.in-battle .unit-actions #resign{grid-column:1/-1;min-height:28px;padding:5px;background:rgba(12,27,22,.65);color:#d99f85;border-color:rgba(153,110,91,.33)}
+body.in-battle .unit-actions .action-glyph{display:inline;color:#e2c98e;font-size:12px;margin-right:2px}
+body.in-battle .unit-actions .action-cost{display:inline;color:#c3cbb9;font-size:9px}
+body.in-battle .unit-actions kbd{position:absolute;right:5px;bottom:6px;font-size:9px;line-height:1.2;padding:1px 4px}
+body.in-battle .unit-actions #end-turn kbd{position:static;color:#42331f;background:#f1d59e;border-color:#ae8046}
+
+/* Foil-edged doctrine cards fan over the lower battlefield. */
+body.in-battle .doctrine-section{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);z-index:55;
+  width:min(760px,calc(100vw - 620px));padding:0;pointer-events:none}
+body.in-battle .doctrine-head{display:flex;gap:10px;justify-content:center;align-items:center;
+  height:42px;margin-bottom:2px;text-align:center}
+body.in-battle .doctrine-head h3{margin:0;color:#f2d69a;font:700 14px/1.05 Georgia,serif;letter-spacing:.13em;text-shadow:0 2px 9px #000}
+body.in-battle .doctrine-head p{display:block;margin:4px 0 0;color:#bfcbb9;font:700 9px/1.2 'Trebuchet MS',sans-serif;letter-spacing:.15em}
+body.in-battle .doctrine-crest{display:block;color:#e8bb69;font-size:19px}
+body.in-battle .doctrine-count{display:block;position:absolute;top:11px;right:0;color:#a5b5a4;font-size:9px;letter-spacing:.08em;white-space:nowrap}
+body.in-battle .doctrine-keyhint{display:inline;color:#ccab6b}
+body.in-battle .hand{display:flex;justify-content:center;align-items:flex-end;gap:8px;min-height:223px;padding:7px 2px 0;perspective:900px;pointer-events:none}
+body.in-battle .doctrine-card{pointer-events:auto;isolation:isolate;position:relative;flex:1 1 0;max-width:172px;min-width:98px;
+  height:207px;min-height:0;display:flex;flex-direction:column;gap:0;padding:5px;text-align:left;
+  border:1px solid #b49a64;border-radius:9px;overflow:visible;cursor:pointer;
+  background:linear-gradient(155deg,#a88a55 0,#3e382a 3%,#a38e62 5%,#121f1b 7%,#0d1a17 93%,#a38e62 96%,#3e382a 99%);
+  box-shadow:0 12px 20px #000d,0 0 0 2px rgba(18,32,25,.9),inset 0 0 0 1px #9b875b;
+  transform-origin:center bottom;transform:translateY(var(--fan-offset,0px)) rotate(var(--fan-rotation,0deg));
+  transition:transform .22s cubic-bezier(.2,.9,.3,1.1),filter .2s,box-shadow .2s,border-color .2s;
+  will-change:transform}
+body.in-battle .doctrine-card:before{content:"";position:absolute;inset:7px;z-index:2;pointer-events:none;border:1px solid rgba(233,198,124,.5);
+  border-radius:4px;box-shadow:inset 0 0 0 1px rgba(9,20,14,.6)}
+body.in-battle .doctrine-card:after{content:"✦";position:absolute;z-index:3;left:11px;top:8px;font-size:10px;color:#dfc08d;text-shadow:0 1px 3px #000}
+body.in-battle .doctrine-card:hover:not(:disabled),body.in-battle .doctrine-card:focus-visible:not(:disabled){z-index:20;
+  transform:translateY(-25px) rotate(0deg) scale(1.065);border-color:#f5d491;
+  box-shadow:0 20px 30px #000e,0 0 0 2px #e7c57e,0 0 28px rgba(225,180,93,.35)}
+body.in-battle .doctrine-card:disabled{cursor:default;opacity:.68;filter:saturate(.58)}
+body.in-battle .doctrine-card .art{height:106px;min-height:106px;flex:none;position:relative;overflow:hidden;margin:4px 4px 0;
+  border-bottom:1px solid rgba(246,212,142,.6);border-radius:3px 3px 0 0;
+  background:radial-gradient(ellipse at 50% 44%,rgba(245,213,138,.46),rgba(83,101,74,.2) 33%,transparent 68%),
+             repeating-linear-gradient(125deg,transparent 0 6px,rgba(228,211,150,.035) 7px 8px),
+             linear-gradient(125deg,#1f3630,#394939 52%,#182823)}
+body.in-battle .doctrine-card .art:before{content:"";position:absolute;inset:6px 13px;border:1px solid rgba(225,203,145,.13);border-radius:50%}
+body.in-battle .doctrine-card .art svg{width:100%;height:100%;max-width:none;filter:drop-shadow(0 1px 7px rgba(245,219,162,.45))}
+body.in-battle .doctrine-card .card-name{display:block;flex:none;min-height:28px;margin:10px 9px 0;padding:0;
+  color:#f3ddb2;font:700 clamp(12px,1.08vw,15px)/1.08 Georgia,serif;text-shadow:0 2px 4px #000;
+  overflow:hidden;text-overflow:ellipsis}
+body.in-battle .doctrine-card .card-desc{display:block;min-height:0;margin:3px 9px 7px;padding:0;
+  color:#c4cbbb;font:600 10px/1.26 'Trebuchet MS',sans-serif;letter-spacing:0;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3}
+body.in-battle .doctrine-card .card-cost{z-index:4;right:10px;top:10px;width:30px;height:30px;
+  background:radial-gradient(circle at 40% 30%,#f6dca5,#d5a85f 72%,#886335);border:1px solid #ffe6ad;
+  border-radius:50%;box-shadow:0 2px 8px #000c,inset 0 1px #fff5;
+  color:#2c2417;font:800 15px/29px Georgia,serif}
+body.in-battle .doctrine-card .card-index{display:none}
+
+/* A retractable campaign journal, not a permanent document section. */
+body.in-battle .battle-log{position:fixed;top:139px;left:22px;width:min(315px,28vw);z-index:60;
+  padding:5px 10px;background:rgba(9,25,19,.76);border:1px solid rgba(197,171,103,.32);
+  border-radius:6px;backdrop-filter:blur(10px);box-shadow:0 5px 25px #0005}
+body.in-battle .battle-log .panel-header{display:flex;align-items:center;justify-content:space-between}
+body.in-battle .battle-log #match-version{color:#8e9f8c;font-size:9px;letter-spacing:.03em}
+body.in-battle .battle-log #events{display:none;overflow:auto;max-height:200px;border-top:1px solid #485644;
+  margin:8px 0 0;padding-top:8px;color:#d5ddc6;font:500 11px/1.6 'Trebuchet MS',sans-serif}
+body.in-battle .battle-log.log-open #events{display:block}
+body.in-battle .battle-log.log-open .toggle-chevron{transform:rotate(180deg)}
+
+/* War Council only enters the field on request. */
+body.in-battle .sidebar{display:block!important;position:fixed;left:0;top:0;bottom:0;width:min(355px,86vw);
+  padding:25px 21px;z-index:115;transform:translateX(-102%);transition:transform .24s ease,visibility .24s;
+  visibility:hidden;pointer-events:none;overflow-y:auto;background:linear-gradient(135deg,#172c22,#0d1b16 70%);
+  border-right:1px solid var(--hud-stroke);box-shadow:10px 0 40px #000b}
+body.in-battle .sidebar-heading{margin-bottom:18px;padding-bottom:12px;border-bottom:1px solid var(--hud-stroke)}
+body.in-battle .sidebar-heading h2{margin:0;color:#f2deb4;font-size:27px}
+body.in-battle .drawer-close{display:inline-flex;align-items:center;justify-content:center}
+body.in-battle.council-open .sidebar{transform:translateX(0);visibility:visible;pointer-events:auto}
+/* Avoid a hidden drawer shadow obscuring mobile HUD; campaign has no multiplayer drawer. */
+body.in-battle:not(.council-open) .sidebar{box-shadow:none}
+body.in-battle.offline-campaign .sidebar{display:none!important}
+body.in-battle.council-open .sidebar{box-shadow:10px 0 40px #000b}
+body.in-battle .sidebar .stack label{color:#becab7}
+body.in-battle .sidebar .match-list button{border-color:rgba(229,196,122,.25)}
+
+/* Tablet: preserve an immersive camera while allowing card/command clearance. */
+@media(min-width:861px) and (max-width:1320px){
+ body.in-battle .masthead h1{font-size:20px}
+ body.in-battle .brand-emblem{width:35px;height:42px}
+ body.in-battle .battlebar{top:82px;width:400px}
+ body.in-battle .info-rail{top:21px;right:18px;width:300px}
+ body.in-battle .rules-toggle{top:85px}
+ body.in-battle .rulecard{top:121px}
+ body.in-battle .doctrine-section{width:calc(100vw - 530px);bottom:22px}
+ body.in-battle .doctrine-card{height:183px}
+ body.in-battle .doctrine-card .art{height:91px;min-height:91px}
+ body.in-battle .doctrine-head{height:35px}
+ body.in-battle .unit-controls{width:236px;bottom:28px}
+ body.in-battle .unit-actions{width:235px;bottom:28px}
+ body.in-battle .camera-tip{bottom:302px}
+ body.in-battle .status-line{bottom:218px}
+}
+
+/* Small screens use a vertical battle cockpit rather than clipping controls. */
+@media(max-width:860px){
+ body.in-battle{height:auto;min-height:100vh;overflow-y:auto;overscroll-behavior:auto}
+ body.in-battle .shell{height:auto;min-height:100vh}
+ body.in-battle .masthead{position:relative;min-height:69px;padding:10px 14px;background:#101e18;z-index:65}
+ body.in-battle .masthead h1{font-size:20px}
+ body.in-battle .brand-emblem{width:30px;height:38px;font-size:8px}
+ body.in-battle .brand-lockup{gap:7px}
+ body.in-battle .masthead p{font-size:8px}
+ body.in-battle .masthead .eyebrow{font-size:8px}
+ body.in-battle .server-status{display:none}
+ body.in-battle .layout{position:relative;inset:auto;height:auto;min-height:calc(100vh - 69px)}
+ body.in-battle .gamepanel{position:relative;inset:auto;min-height:0;height:auto}
+ body.in-battle #battle-ui{position:relative;inset:auto;height:auto;min-height:calc(100vh - 69px);display:flex;flex-direction:column}
+ body.in-battle .battlebar{position:relative;left:auto;top:auto;transform:none;order:0;width:100%;min-height:91px;
+   padding:11px 14px;display:flex;justify-content:space-between;gap:12px;background:#172b20;text-align:left}
+ body.in-battle .battlebar h2{font-size:19px}
+ body.in-battle .battlebar .muted{font-size:10px}
+ body.in-battle .phase-pill{font-size:9px;min-width:90px}
+ body.in-battle .battle-viewport{position:relative;inset:auto;order:1;flex:none;width:100%;height:55vh;min-height:340px;max-height:570px}
+ body.in-battle .scene-corners{inset:7px}
+ body.in-battle .camera-tip{font-size:8px;bottom:10px;left:50%;right:auto;white-space:normal;text-align:center;width:max-content;max-width:94%;padding:6px 8px}
+ body.in-battle .battle-viewport #render-status{top:11px;left:8px}
+ body.in-battle .unit-controls{order:2;position:relative;left:auto;bottom:auto;width:100%;margin:0;border-radius:0;min-height:0;padding:12px 14px 6px;border-left:0;border-top:1px solid var(--hud-stroke)}
+ body.in-battle .formation-readout strong{font-size:18px;margin:5px 0}
+ body.in-battle .unit-actions{order:3;position:relative;right:auto;bottom:auto;width:100%;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;margin:0;padding:0 14px 13px;background:#0e1b16}
+ body.in-battle .unit-actions #end-turn{grid-column:1/-1}
+ body.in-battle .unit-actions #resign{grid-column:1/-1}
+ body.in-battle .doctrine-section{order:4;position:relative;left:auto;bottom:auto;transform:none;width:100%;padding:0 10px 12px;background:#0e1b16}
+ body.in-battle .doctrine-head{height:45px}
+ body.in-battle .doctrine-count{display:none}
+ body.in-battle .hand{min-height:205px;gap:5px;justify-content:space-between}
+ body.in-battle .doctrine-card{max-width:none;min-width:0;height:185px;flex:1}
+ body.in-battle .doctrine-card .art{height:83px;min-height:83px}
+ body.in-battle .doctrine-card .card-name{font-size:12px;margin:8px 7px 0}
+ body.in-battle .doctrine-card .card-desc{font-size:9px;margin:2px 7px 6px}
+ body.in-battle .battle-log{order:5;position:relative;left:auto;top:auto;width:calc(100% - 24px);margin:8px 12px 20px}
+ body.in-battle .info-rail{position:relative;top:auto;right:auto;width:100%;max-width:none;z-index:10;display:flex;flex-direction:column;
+   padding:8px 14px 14px;border-top:1px solid rgba(195,159,100,.25);background:#0e1e17}
+ body.in-battle .resource-grid{order:1}
+ body.in-battle .info-rail .rules-toggle{position:relative;top:auto;right:auto;order:2;width:max-content;margin-top:10px}
+ body.in-battle .info-rail .rulecard{position:relative;top:auto;right:auto;order:3;width:100%;margin:7px 0}
+ body.in-battle .info-rail .status-line{position:relative;left:auto;bottom:auto;width:100%;margin:0 0 8px;order:0;padding:10px 12px}
+ body.in-battle .council-scrim{position:fixed}
+}
+@media(max-width:480px){
+ body.in-battle .masthead h1{font-size:16px}
+ body.in-battle .masthead .brand-emblem{display:none}
+ body.in-battle .command-hub-toggle{font-size:9px;padding:7px}
+ body.in-battle .battlebar{flex-direction:row;align-items:center}
+ body.in-battle .battlebar h2{font-size:16px}
+ body.in-battle .doctrine-card .card-desc{-webkit-line-clamp:2}
+ body.in-battle .hand{gap:4px}
+ body.in-battle .doctrine-card .card-cost{right:6px;top:6px;width:23px;height:23px;font-size:12px;line-height:23px}
+ body.in-battle .doctrine-card .card-name{font-size:10px}
+ body.in-battle .doctrine-card .art{height:76px;min-height:76px}
+}
+@media(prefers-reduced-motion:reduce){
+ body.in-battle .doctrine-card,body.in-battle .sidebar,.log-toggle .toggle-chevron{transition:none!important;will-change:auto}
+}
+
+/* Preserve viewport registration under browser zoom and card fan rotation. */
+html{overflow-x:hidden}
+body.in-battle{overflow-x:hidden}
+@media(max-width:860px){
+ body.in-battle .doctrine-card{transform:none!important}
+ body.in-battle .masthead{overflow:hidden}
+ body.in-battle .battlebar{overflow:hidden}
+}
+/* Readable round title against bright forests and water, without a toolbar. */
+body.in-battle .battlebar-heading{
+  padding:5px 14px 7px;
+  border-radius:16px;
+  background:radial-gradient(ellipse at 50% 50%,rgba(5,18,14,.82),rgba(5,18,14,.35) 74%,transparent);
+  text-shadow:0 2px 12px #000;
+}
+@media(max-width:860px){body.in-battle .battlebar-heading{padding:0;background:transparent}}

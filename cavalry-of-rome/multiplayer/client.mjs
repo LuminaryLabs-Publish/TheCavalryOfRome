@@ -24,6 +24,25 @@ let secret=safeGet(`cavalry:identity:${api}`)||'';
 let identity=null,selected=null,selectedUnitId=null,battlefield=null,battlefieldReady=false,busy=false,connection=null,peer=null,peerId=null,observedVersion=-1,pollTimer=null;
 const source=OFFLINE_MODE?(CAMPAIGN_CONTEXT?buildCampaignScenario(CAMPAIGN_CONTEXT.encounter):sceneEncounter()):null;
 const own=()=>selected?.side;
+function toggleCouncil(show=!document.body.classList.contains('council-open')){
+ if(OFFLINE_MODE||!document.body.classList.contains('in-battle'))return;
+ document.body.classList.toggle('council-open',Boolean(show));
+ $('council-toggle').setAttribute('aria-expanded',String(Boolean(show)));
+ $('council-scrim').hidden=!show;
+ $('war-council').inert=!show;
+ if(show)$('council-close').focus();else $('council-toggle').focus();
+}
+function closePanels(){
+ if(document.body.classList.contains('council-open'))toggleCouncil(false);
+ const rules=$('rules-panel');rules.hidden=true;$('rules-toggle').setAttribute('aria-expanded','false');
+ $('battle-log').classList.remove('log-open');$('log-toggle').setAttribute('aria-expanded','false');
+}
+function activateBattleUI(){
+ document.body.classList.add('in-battle');
+ $('war-council').inert=true;
+ closePanels();
+}
+
 const turn=()=>selected?.state?.battle?.phase===own()&&!selected?.state?.battle?.outcome&&selected?.status==='active';
 const alive=u=>u.status==='ready'&&u.strength>0;
 function notice(text,error=false){$('status-line').textContent=text;$('status-line').style.color=error?'#e9a78c':'#d2cba9';}
@@ -55,6 +74,7 @@ async function openMatch(id,initial=null){
  try{const view=initial||await request(`/api/matches/${id}`);const changed=selected?.id!==view.id;
   selected=view;if(changed){selectedUnitId=null;observedVersion=-1;connection?.close();connection=null;}
   $('welcome').hidden=true;$('battle-ui').hidden=false;
+  activateBattleUI();
   if(!battlefieldReady)await initializeBoard();
   render();await listMatches();if(changed)notice(view.status==='waiting'?`Share invitation ${view.inviteCode} to invite another commander.`:`Battle loaded. ${human(view.side)} is yours to command.`);
   await offerPeer();
@@ -78,8 +98,13 @@ const motifs={
 function iconSvg(type){return `<svg viewBox="0 0 150 140" aria-hidden="true"><circle cx="75" cy="70" r="60" fill="none" stroke="#d9b776" stroke-opacity=".25" stroke-width="1"/><g fill="none" stroke="#e7d3a1" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">${motifs[type]||''}</g></svg>`;}
 function renderHand(){const hand=$('hand');hand.replaceChildren();if(!selected)return;
  const active=turn(),p=selected.state.resources.own;
- for(const c of selected.state.hand){const def=DOCTRINE_DEFS[c.type];if(!def)continue;
-  const button=document.createElement('button');button.type='button';button.className='doctrine-card';button.disabled=!active||p.doctrinePlayed||p.supply<def.cost||busy;
+ for(const [index,c] of selected.state.hand.entries()){const def=DOCTRINE_DEFS[c.type];if(!def)continue;
+  const button=document.createElement('button');button.type='button';button.className='doctrine-card';
+  const arc=index-(selected.state.hand.length-1)/2;
+  button.style.setProperty('--fan-rotation',`${arc*2.7}deg`);
+  button.style.setProperty('--fan-offset',`${Math.abs(arc)*7}px`);
+  button.disabled=!active||p.doctrinePlayed||p.supply<def.cost||busy;
+  button.title=`${def.title} · ${def.cost} Supply · ${active?'Click to play':'Available on your turn'}`;
   const art=document.createElement('div');art.className='art';art.innerHTML=iconSvg(c.type);
   const tag=document.createElement('span');tag.className='card-cost';tag.textContent=def.cost;
   const title=document.createElement('strong');title.className='card-name';title.textContent=def.title;
@@ -92,6 +117,8 @@ function renderHand(){const hand=$('hand');hand.replaceChildren();if(!selected)r
 function chosen(){return selected?.state?.battle?.units.find(u=>u.id===selectedUnitId&&alive(u));}
 function render(){if(!selected)return;
  const b=selected.state.battle,p=selected.state.resources.own,active=turn();
+ document.body.classList.add('in-battle');
+ $('war-council').inert=!document.body.classList.contains('council-open');
  $('battle-role').textContent=`YOU COMMAND ${human(own()).toUpperCase()} · ${selected.mode.toUpperCase()}`;
  $('battle-label').textContent=b.outcome?`Battle finished · ${b.outcome==='draw'?'Draw':human(b.outcome)+' victorious'}`:`Round ${b.turn} · ${human(b.phase)} activation`;
  $('battle-opponent').textContent=`Against ${selected.opponentName}. ${selected.status==='waiting'?'Invitation pending.':''}`;
@@ -108,6 +135,9 @@ function render(){if(!selected)return;
   $('selected-description').textContent=`${u.strength}/${u.maxStrength} strength · ${u.morale} morale · ${u.soldiers} soldiers · (${u.q},${u.r})`;
  }else{$('selected-unit').textContent='Select a friendly formation';$('selected-description').textContent='Choose any living formation; cards do not restrict unit orders.';}
  $('match-version').textContent=`STATE ${selected.version} · SEQUENCE ${selected.state.sequence}`;
+ $('doctrine-instruction').textContent=p.doctrinePlayed?'DOCTRINE DEPLOYED':active?'ONE DOCTRINE PER ACTIVATION':'AWAITING ORDERS';
+ $('battle-ui').classList.toggle('local-turn',active);
+ $('unit-controls').classList.toggle('has-formation',Boolean(chosen()));
  redrawResources();renderHand();recentEvents();renderBoard();
 }
 async function submit(command){if(!selected||busy)return;
@@ -183,7 +213,36 @@ async function refreshCurrent(){if(!selected||busy)return;try{const fresh=await 
 async function polling(){if(!identity)return;try{await refreshCurrent();await listMatches();if(selected&&peerId)await offerPeer();}catch{}}
 function bind(){
  $('api-url').value=api;
- $('api-save').addEventListener('click',()=>{try{const updated=resolveApi($('api-url').value);api=updated;secret=safeGet(`cavalry:identity:${api}`)||'';identity=null;selected=null;safeSet('cavalry:api',api);$('identity-create').hidden=false;$('identity-ready').hidden=true;$('match-controls').hidden=true;$('welcome').hidden=false;$('battle-ui').hidden=true;connect();}catch(e){notice(e.message,true);}});
+ $('council-toggle').addEventListener('click',()=>toggleCouncil());
+ $('council-close').addEventListener('click',()=>toggleCouncil(false));
+ $('council-scrim').addEventListener('click',()=>toggleCouncil(false));
+ $('rules-toggle').addEventListener('click',()=>{
+  const opening=$('rules-panel').hidden;
+  $('rules-panel').hidden=!opening;
+  $('rules-toggle').setAttribute('aria-expanded',String(opening));
+ });
+ $('log-toggle').addEventListener('click',()=>{
+  const expanded=$('battle-log').classList.toggle('log-open');
+  $('log-toggle').setAttribute('aria-expanded',String(expanded));
+ });
+ window.addEventListener('keydown',event=>{
+  if(!document.body.classList.contains('in-battle')||event.altKey||event.ctrlKey||event.metaKey)return;
+  if(event.key==='Escape'){
+   if(document.body.classList.contains('council-open')){toggleCouncil(false);event.preventDefault();return;}
+   if(!$('rules-panel').hidden||$('battle-log').classList.contains('log-open')){closePanels();event.preventDefault();}
+   return;
+  }
+  if(document.body.classList.contains('council-open')||!selected||busy||
+    ['INPUT','TEXTAREA','SELECT'].includes(event.target?.tagName)||event.target?.isContentEditable)return;
+  const key=event.key.toLowerCase();
+  if(['1','2','3','4'].includes(key)){
+   const card=$('hand').querySelectorAll('.doctrine-card')[Number(key)-1];
+   if(card&&!card.disabled){event.preventDefault();card.click();}return;
+  }
+  const control={e:'end-turn',r:'rally',m:'surge',h:'rules-toggle',l:'log-toggle'}[key];
+  if(control){const button=$(control);if(button&&!button.disabled){event.preventDefault();button.click();}}
+ });
+ $('api-save').addEventListener('click',()=>{try{const updated=resolveApi($('api-url').value);api=updated;secret=safeGet(`cavalry:identity:${api}`)||'';identity=null;selected=null;safeSet('cavalry:api',api);$('identity-create').hidden=false;$('identity-ready').hidden=true;$('match-controls').hidden=true;$('welcome').hidden=false;$('battle-ui').hidden=true;document.body.classList.remove('in-battle','council-open');$('council-scrim').hidden=true;$('war-council').inert=false;connect();}catch(e){notice(e.message,true);}});
  $('register').addEventListener('click',register);$('recover').addEventListener('click',recover);
  $('copy-identity').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(secret);notice('Recovery token copied. Treat it like a password.');}catch{notice('Clipboard unavailable. Copy the recovery token from the secure browser context.',true);}});
  $('create-human').addEventListener('click',()=>create('human'));$('create-ai').addEventListener('click',()=>create('ai'));$('join').addEventListener('click',join);
@@ -226,6 +285,7 @@ async function startOffline(){
  selected={id:seed,side:'attacker',status:'active',mode:'ai',version:0,opponentName:'Learning Commander',state:campaignView(localSession)};
  $('identity-create').hidden=true;$('identity-ready').hidden=true;$('match-controls').hidden=true;
  $('welcome').hidden=true;$('battle-ui').hidden=false;
+ activateBattleUI();
  $('connection-status').textContent=CAMPAIGN_CONTEXT?'SINGLE-PLAYER CAMPAIGN':'OFFLINE PRACTICE';
  $('connection-light').classList.add('online');
  await initializeBoard();render();
