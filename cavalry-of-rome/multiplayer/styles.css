@@ -325,4 +325,26 @@ body.in-battle .battlebar-heading{
 }
 @media(max-width:860px){body.in-battle .battlebar-heading{padding:0;background:transparent}}
 
-undefined
+/* Anchored world-space markers from the tactical renderer, not a floating text column. */
+body.in-battle #unit-labels .unit-tag {position:absolute;top:0;left:0;z-index:2;min-width:25px;
+  padding:3px 5px;pointer-events:none;border:1px solid rgba(232,201,136,.58);border-radius:5px;
+  background:rgba(11,29,22,.88);color:#f4ddb0;font:800 11px/1.1 'Trebuchet MS',sans-serif;
+  box-shadow:0 2px 9px rgba(0,0,0,.55);text-align:center;white-space:nowrap;}
+body.in-battle #unit-labels .unit-tag.rival {color:#e9b5a6;border-color:rgba(213,126,91,.7);}
+body.in-battle #unit-labels .unit-tag:not(.revealed) .unit-tag__header,
+body.in-battle #unit-labels .unit-tag:not(.revealed) .unit-tag__bar {display:none;}
+body.in-battle #unit-labels .unit-tag:not(.revealed)::after {content:attr(data-strength);}
+body.in-battle #unit-labels .unit-tag.revealed {min-width:120px;max-width:200px;padding:7px 8px;
+  border-color:#efcc88;background:rgba(10,24,19,.95);}
+body.in-battle #unit-labels .unit-tag.revealed .unit-tag__header {display:flex;align-items:center;
+  justify-content:space-between;gap:9px;font-size:10px;color:inherit;text-transform:none;}
+body.in-battle #unit-labels .unit-tag.revealed .unit-tag__header b {max-width:158px;overflow:hidden;text-overflow:ellipsis;}
+body.in-battle #unit-labels .unit-tag.revealed .unit-tag__bar {position:relative;display:block;
+  margin-top:5px;height:4px;background:#37463a;border-radius:4px;overflow:visible;}
+body.in-battle #unit-labels .unit-tag.revealed .unit-tag__bar i {display:block;height:100%;background:#d9ad6c;border-radius:3px;}
+body.in-battle #unit-labels .unit-tag.revealed .unit-tag__bar span {display:none;}
+body.in-battle #unit-labels .unit-tag.revealed.selected {box-shadow:0 0 16px rgba(229,186,96,.5);}
+body.in-battle .doctrine-card .art svg {display:block;margin:auto;max-width:135px;}
+body.in-battle .doctrine-card[data-doctrine='road-levy'] .art {background-color:#314037;}
+body.in-battle .doctrine-card[data-doctrine='supply-train'] .art {background-color:#373a2c;}
+body.in-battle .doctrine-card[data-doctrine='lancer-signal'] .art {background-color:#443727;}
