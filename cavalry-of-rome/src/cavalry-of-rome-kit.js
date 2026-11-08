@@ -9,6 +9,7 @@ import {
   createSequenceState
 } from "./sequences.js";
 import { encounterTerrainCells } from "./encounter-terrain.js";
+import { applyTacticalEncounterResult } from "./encounter-resolution.mjs";
 
 export const CAVALRY_OF_ROME_KIT_VERSION = "0.5.0";
 
@@ -286,7 +287,7 @@ function createOpeningEngagement(world, state, kind, participants) {
     sides: 6,
     result: deterministicD6(`${state.id}:${state.campaign.turn}:${unit.id}:${world.__nexusClock.frame}:${index}`)
   }));
-  const total = dice.reduce((sum, die) => sum + die.result, 0);
+  const total = heavyUnits.length ? dice.reduce((sum, die) => sum + die.result, 0) : defenderUnits.length;
   const deploymentSeed = `${state.id}:${state.campaign.turn}:${world.__nexusClock.frame}:defenders`;
   const committed = createDefenderDeploymentUnits(defenderUnits, total, deploymentSeed);
   const defenderComposition = committed.reduce((counts, unit) => {
@@ -329,6 +330,8 @@ function createEncounterBoard(participants, encounter, engagement = null) {
         ...hexCell,
         side,
         unitId: units[i].id,
+        deploymentSourceId: units[i].deploymentSourceId ?? units[i].id,
+        reserve: Boolean(units[i].reserve),
         unitType: units[i].unitType ?? "medium",
         owner: units[i].owner,
         label: units[i].label,
@@ -739,6 +742,7 @@ function findMarchCollision(marches) {
     for (let j = i + 1; j < marches.length; j += 1) {
       const first = marches[i];
       const second = marches[j];
+      if (first?.owner === second?.owner) continue;
       if (!first?.route || !second?.route) continue;
 
       const hit = segmentIntersection(first.route.start, first.route.end, second.route.start, second.route.end);
@@ -870,7 +874,7 @@ function updateCampaignMarches(world, state) {
     arrival.currentPosition = routePointAt(arrival.route, 1);
     const marchGroups = [encounterGroupFromMarch(arrival, "attacker")];
     const defenderGroup = encounterGroupFromRegion(state, arrival.toRegionId);
-    if (!defenderGroup) {
+    if (!defenderGroup || defenderGroup.owner === arrival.owner) {
       completeMarch(world, state, arrival);
       normalizeCampaign(state.campaign);
       return;
@@ -1039,6 +1043,24 @@ export function createCavalryOfRomeKit(config = {}) {
     install({ engine, world }) {
       engine.cavalry = {
         getState() { return world.getResource(CavalryState); },
+        resolveEncounter(packet) {
+          const current = world.getResource(CavalryState);
+          const next = clone(current);
+          const outcome = applyTacticalEncounterResult(next.campaign, packet);
+          // Both the cavalry campaign and strategic economy own region records.
+          // Never leave these inconsistent after a successful conquest.
+          if (outcome.capturedRegionId) {
+            if (typeof engine.strategy?.reconcileCapturedRegion !== "function") {
+              throw new Error("Strategic territory reconciliation is unavailable");
+            }
+            engine.strategy.reconcileCapturedRegion(outcome.capturedRegionId, outcome.winnerOwner);
+          }
+          normalizeCampaign(next.campaign);
+          next.lastEvent = "cavalry.tactical.resolved";
+          appendLog(next, makeLogEntry(world, next.campaign.lastArmyEvent, "encounter"));
+          world.setResource(CavalryState, next);
+          return outcome;
+        },
         setFormation(formation) { world.emit(FormationRequested, { formation }); return world.getResource(CavalryState); },
         selectLane(laneId) { world.emit(LaneSelected, { laneId }); return world.getResource(CavalryState); },
         selectUnit(unitId, append = false) { world.emit(UnitSelected, { unitId, append }); return world.getResource(CavalryState); },

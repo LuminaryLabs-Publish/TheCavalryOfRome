@@ -271,6 +271,18 @@ export function createStrategicBoardGameLoopKit(config = {}) {
     install({ engine, world }) {
       engine.strategy = {
         getState() { return world.getResource(StrategicBoardLoopState); },
+        reconcileCapturedRegion(regionId, owner) {
+          const current = world.getResource(StrategicBoardLoopState);
+          if (!current?.regions?.[regionId] || typeof owner !== "string" || !owner.trim()) {
+            throw new Error("Cannot reconcile invalid captured province");
+          }
+          if (current.regions[regionId].owner === owner) return clone(current.regions[regionId]);
+          const next = clone(current);
+          next.regions[regionId].owner = owner;
+          appendLog(next, makeLogEntry(world, `Territory ${next.regions[regionId].label} is now controlled by ${owner}.`, "territory"));
+          world.setResource(StrategicBoardLoopState, next);
+          return clone(next.regions[regionId]);
+        },
         endTurn() { world.emit(StrategicEndTurnRequested, {}); return world.getResource(StrategicBoardLoopState); },
         spendWorldAction(actionType, detail = {}) { world.emit(StrategicWorldActionRequested, { actionType, detail }); return world.getResource(StrategicBoardLoopState); },
         recruitUnit(regionId, unitType, count = 1) { world.emit(StrategicRecruitRequested, { regionId, unitType, count }); return world.getResource(StrategicBoardLoopState); },

@@ -78,3 +78,10 @@ Use this for state-first debugging instead of inspecting canvas pixels.
 ## Current Status
 
 This is a playable v0.1 thin slice with no external dependencies. It is ready for iteration into fuller Roman cavalry domains: formations, command cadence, scouting, fatigue, terrain, enemy AI, campaign rewards, and replay-safe persistence.
+
+
+## Three-dimensional command-card encounters
+
+The full strategic campaign is still launched from this game directory with `npm run start`. When opposing armies meet on the map, a tactical encounter now opens automatically. Choose an illustrated command card from the five-card hand, order eligible miniature formations on terrain-conforming hexes, and fight or withdraw. After the result, the surviving soldier counts and captured territory return to the strategic campaign. The tactical battle may also be previewed independently at `/tactical/`.
+
+Combat source and the six GLB troop models live in `tactical/`. The original world renderer, marching and recruitment systems are preserved. Run `npm test` to exercise both the legacy game and the new tactical tests. Native Nexus authoring integration is still a separate validation step; asset meshes are procedurally authored and exported as GLBs.

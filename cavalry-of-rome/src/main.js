@@ -5,6 +5,7 @@ import { cavalryOfRomeLevel01 } from "./level-01.js";
 import { createInputAdapter } from "./input-adapter.js";
 import { createRenderer } from "./visual-upgrade-renderer.js";
 import { createProvinceCommandPanelKit } from "./province-command-panel-kit.js";
+import { createTacticalOverlay } from "./tactical-overlay.js";
 
 const canvas = document.querySelector("#game");
 const errorPanel = document.querySelector("#errorPanel");
@@ -32,6 +33,7 @@ async function boot() {
   const renderer = await createRenderer(canvas);
   const input = createInputAdapter({ canvas, renderer, engine });
   const provinceCommandPanel = createProvinceCommandPanelKit({ canvas, renderer, engine });
+  const tacticalOverlay = createTacticalOverlay({ engine, onError: showFatal });
 
   let running = true;
   let last = performance.now();
@@ -40,7 +42,10 @@ async function boot() {
     input.flush();
     engine.tick(dt);
     provinceCommandPanel.update();
-    renderer.draw(engine.cavalry.getState());
+    const snapshot = engine.cavalry.getState();
+    tacticalOverlay.update(snapshot?.campaign?.encounter ?? null);
+    // Do not spend GPU cycles drawing the world behind the full-screen battle.
+    if (!snapshot?.campaign?.encounter?.active) renderer.draw(snapshot);
   }
 
   function frame(now) {
@@ -56,6 +61,7 @@ async function boot() {
     renderer,
     input,
     provinceCommandPanel,
+    tacticalOverlay,
     tick,
     stop() {
       running = false;

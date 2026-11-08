@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+ <meta charset="utf-8">
+ <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+ <meta name="theme-color" content="#111810">
+ <meta name="description" content="Cavalry of Rome — 3D sculpted hex battlefield with authored miniatures and illustrated command cards.">
+ <title>Cavalry of Rome — The Sculpted Battlefield</title>
+ <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+ <main id="game" aria-label="Cavalry of Rome interactive command card combat">
+  <section class="battle-viewport" aria-label="3D sculpted battlefield"><canvas id="battle" aria-label="Three-dimensional terrain conforming hex battlefield. Click formations and hexes; drag to orbit, scroll to zoom."></canvas><div id="unit-labels" aria-hidden="true"></div><div class="camera-help">DRAG TO ORBIT <span>◆</span> SCROLL TO ZOOM <span>◆</span> HEXES FOLLOW WORLD TERRAIN</div><small id="scene-status" class="scene-status">AUTHORING BATTLEFIELD GEOMETRY…</small></section>
+  <div class="terrain-film" aria-hidden="true"></div>
+
+  <header class="top-hud">
+   <div class="game-identity">
+    <span class="eyebrow">ANCIENT WARFARE · TACTICAL ENCOUNTER</span>
+    <h1>Cavalry <em>of</em> Rome</h1>
+    <p>THE COMMANDER'S HAND <span class="mini-divider">◆</span> SABINE ROAD</p>
+   </div>
+   <div class="battle-ticker" aria-label="Battle status">
+    <div><span>TURN</span><strong id="turn">01</strong></div>
+    <div><span>ROMAN COHORTS</span><strong id="attacker-count">3</strong></div>
+    <div><span>OPPOSING UNITS</span><strong id="defender-count">4</strong></div>
+    <div><span>BATTLE PHASE</span><strong id="phase">ORDERS</strong></div>
+   </div>
+  </header>
+
+  <section class="action-panel" aria-label="Combat context">
+   <div class="faction-flag"><span>SPQR</span></div>
+   <div class="action-panel-copy">
+    <small id="selected-kicker">AWAITING ORDERS</small>
+    <strong id="selected-name">Choose a command card</strong>
+    <span id="selected-meta">Your hand determines which units you may command.</span>
+   </div>
+  </section>
+
+  <div class="right-actions">
+   <button type="button" class="text-button" id="help-toggle" aria-expanded="false">HOW TO PLAY <span>?</span></button>
+   <button type="button" class="text-button" id="withdraw">WITHDRAW</button>
+   <button type="button" class="text-button" id="restart">RESTART</button>
+  </div>
+
+  <section id="help-panel" class="help-panel" hidden>
+   <h2>Command a living landscape</h2>
+   <p>The 3D hexes conform to the world terrain. Real river crossings require a bridge; forests and rocks block movement. Pick a card from your hand, then press <b>PLAY CARD</b>. Only formations authorized by that card can receive orders.</p>
+   <p>Click a gold-ringed Roman miniature, then a green hex to move or a red-ringed enemy to attack. Drag to orbit the map; scroll to zoom. Each ordered formation may move and attack once, if its card allows both. Unit pedestals distinguish factions, and each formation shows soldier count and health.</p>
+   <p>Press <b>END COMMAND</b> to resolve the enemy's response and draw a new card. Keyboard: <b>1–5</b> select card, <b>Enter</b> play/end, <b>Esc</b> clear selection.</p>
+  </section>
+
+  <div class="field-message" id="field-message" role="status" aria-live="polite">Select a card from your hand to issue your first order.</div>
+
+  <div class="battle-outcome" id="battle-outcome" hidden>
+   <div class="outcome-emblem">✦</div>
+   <div id="outcome-label">VICTORY</div>
+   <p id="outcome-description">The field belongs to Rome.</p>
+   <button type="button" id="replay">FIGHT AGAIN</button>
+  </div>
+
+  <footer class="command-dock" aria-label="Illustrated command card hand">
+   <div class="dock-rule"><span>THE COMMANDER'S HAND</span><i></i><span id="command-status">CHOOSE ONE CARD</span></div>
+   <div class="command-banner">
+     <div class="command-info">
+      <small id="command-kicker">AVAILABLE COMMAND</small>
+      <strong id="command-name">Your next move begins here.</strong>
+      <span id="command-rule">Choose a card below to see its order and eligible formations.</span>
+     </div>
+     <div class="command-buttons">
+      <button class="primary-action" id="play-card" disabled>PLAY CARD <span>↗</span></button>
+      <button class="primary-action finish-action" id="end-command" disabled>END COMMAND <span>↗</span></button>
+     </div>
+   </div>
+   <div class="card-area">
+     <div class="deck-vessel" aria-label="Command deck remaining">
+      <div class="card-back"><span class="card-back-border"><span class="laurel">❧</span><b>SPQR</b><small>LEGION COMMAND</small></span></div>
+      <div class="deck-caption"><b id="deck-count">22</b><span>DRAW DECK</span></div>
+     </div>
+     <div id="hand" class="hand" aria-label="Five command cards"></div>
+     <div class="played-vessel" id="played-vessel" aria-label="Played command card">
+      <div class="played-card-label">IN PLAY</div>
+      <div class="played-cover" id="played-cover"><span>✦</span><b id="played-title">NO CARD</b><small id="played-orders">PLAY A CARD</small></div>
+     </div>
+   </div>
+   <div class="bottom-ribbon"><span>⚔ ROMAN FORCES</span><span id="battle-summary">CARDS CONVEY ORDERS · THE FIELD DECIDES OUTCOMES</span><span>◆ THE SABINE CAMPAIGN</span></div>
+  </footer>
+  <div id="error" class="error-panel" hidden></div>
+ </main>
+ <script type="module" src="./demo.mjs"></script>
+</body>
+</html>

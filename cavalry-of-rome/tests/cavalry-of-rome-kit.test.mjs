@@ -196,6 +196,11 @@ test("crossing march routes create an encounter", () => {
 test("arrival-triggered encounters expose opening engagement and hex troop board", () => {
   const engine = createEngine();
   const state = engine.cavalry.getState();
+  // An encounter requires opposing owners: Italia is contested in this fixture.
+  state.campaign.regions.italia.owner = "blue";
+  for (const defender of state.campaign.units.filter((unit) => unit.regionId === "italia")) {
+    defender.owner = "blue";
+  }
   const units = ["light", "medium", "heavy"].map((unitType) => (
     state.campaign.units.find((candidate) => candidate.regionId === "hispania" && candidate.unitType === unitType && candidate.status === "garrison")
   ));

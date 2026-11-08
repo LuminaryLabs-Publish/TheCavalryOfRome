@@ -1,0 +1,127 @@
+{
+  "pipeline": "deterministic authoring recipe -> editable mesh -> GLB",
+  "author": "sandbox-procedural-authoring",
+  "nexus_native_execution": "not_run",
+  "models": [
+    {
+      "file": "assets/models/roman-light.glb",
+      "triangles": 1424,
+      "vertices": 766,
+      "bytes": 30288,
+      "bounds": [
+        [
+          -10.0,
+          0.2500000000000001,
+          -5.7
+        ],
+        [
+          7.5,
+          33.3,
+          4.35
+        ]
+      ],
+      "faction": "roman",
+      "class": "light"
+    },
+    {
+      "file": "assets/models/roman-medium.glb",
+      "triangles": 1506,
+      "vertices": 826,
+      "bytes": 32260,
+      "bounds": [
+        [
+          -8.959999999999999,
+          0.2500000000000001,
+          -5.7
+        ],
+        [
+          7.199999999999999,
+          27.3,
+          4.9
+        ]
+      ],
+      "faction": "roman",
+      "class": "medium"
+    },
+    {
+      "file": "assets/models/roman-heavy.glb",
+      "triangles": 2408,
+      "vertices": 1286,
+      "bytes": 50448,
+      "bounds": [
+        [
+          -9.1,
+          0.22499999999999998,
+          -12.513763144465962
+        ],
+        [
+          6.837070189571017,
+          49.0,
+          15.399999999999999
+        ]
+      ],
+      "faction": "roman",
+      "class": "heavy"
+    },
+    {
+      "file": "assets/models/enemy-light.glb",
+      "triangles": 1264,
+      "vertices": 682,
+      "bytes": 27024,
+      "bounds": [
+        [
+          -10.0,
+          0.2500000000000001,
+          -5.7
+        ],
+        [
+          7.5,
+          33.3,
+          4.35
+        ]
+      ],
+      "faction": "enemy",
+      "class": "light"
+    },
+    {
+      "file": "assets/models/enemy-medium.glb",
+      "triangles": 1346,
+      "vertices": 742,
+      "bytes": 28996,
+      "bounds": [
+        [
+          -8.959999999999999,
+          0.2500000000000001,
+          -5.7
+        ],
+        [
+          7.199999999999999,
+          25.05,
+          4.9
+        ]
+      ],
+      "faction": "enemy",
+      "class": "medium"
+    },
+    {
+      "file": "assets/models/enemy-heavy.glb",
+      "triangles": 2248,
+      "vertices": 1202,
+      "bytes": 47184,
+      "bounds": [
+        [
+          -9.1,
+          0.22499999999999998,
+          -12.513763144465962
+        ],
+        [
+          6.837070189571017,
+          49.0,
+          15.399999999999999
+        ]
+      ],
+      "faction": "enemy",
+      "class": "heavy"
+    }
+  ]
+}
