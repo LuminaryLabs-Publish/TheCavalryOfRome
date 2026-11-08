@@ -324,3 +324,5 @@ body.in-battle .battlebar-heading{
   text-shadow:0 2px 12px #000;
 }
 @media(max-width:860px){body.in-battle .battlebar-heading{padding:0;background:transparent}}
+
+undefined

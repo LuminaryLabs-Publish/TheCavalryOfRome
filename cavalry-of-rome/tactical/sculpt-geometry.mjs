@@ -210,30 +210,47 @@ function addWatercourse(b){
 }
 
 function addBridge(b){
- if(ACTIVE_CAMPAIGN_SITE&&!FEATURES.some(f=>f.type==='bridge'))return;
- const center=axialWorld(0,0),from=axialWorld(0,-1),to=axialWorld(0,1);
- const forward=normal3([to.x-from.x,0,to.z-from.z]);const right=[-forward[2],0,forward[0]];
- const x=center.x,z=center.z,high=waterHeight(x)+14;
- const segment=(t,w,dy=0)=>[forward[0]*t+right[0]*w,high+dy,forward[2]*t+right[2]*w];
- // Roman wood trestle with end abutments and distinct wood boards.
- for(const width of [-12,12]){
-  const a=segment(-59,width,0),c=segment(59,width,0);
-  b.band(a,c,2.7,[.34,.23,.14]);
+ // Draw a real bridge on EACH passable crossing, not at a hard-coded center hex.
+ const crossings=ACTIVE_CAMPAIGN_SITE?FEATURES.filter(f=>f.type==='bridge'):[{q:0,r:0}];
+ for(const crossing of crossings){
+  const center=axialWorld(crossing.q,crossing.r);
+  const waterNeighbors=GRID_DIRECTIONS.map(([dq,dr])=>getFeature(crossing.q+dq,crossing.r+dr))
+   .filter(f=>f&&(f.type==='river'||f.riverCrossing))
+   .map(f=>axialWorld(f.q,f.r));
+  let flow;
+  if(waterNeighbors.length>=2){
+   const first=waterNeighbors[0],last=waterNeighbors.at(-1);
+   flow=normal3([last.x-first.x,0,last.z-first.z]);
+  }else if(waterNeighbors.length){
+   flow=normal3([waterNeighbors[0].x-center.x,0,waterNeighbors[0].z-center.z]);
+  }else{
+   const angle=Number.isFinite(crossing.direction)?crossing.direction:0;
+   flow=[Math.cos(angle),0,Math.sin(angle)];
+  }
+  if(Math.hypot(flow[0],flow[2])<.01)flow=[1,0,0];
+  const forward=normal3([-flow[2],0,flow[0]]),right=[-forward[2],0,forward[0]];
+  const half=Math.max(41,SITE.hexSize*.83);
+  const bankAt=t=>terrainHeight(center.x+forward[0]*t,center.z+forward[2]*t);
+  const high=Math.max(terrainHeight(center.x,center.z)+11,bankAt(-half)+5,bankAt(half)+5);
+  const segment=(t,w,dy=0)=>[
+   center.x-SITE.x+forward[0]*t+right[0]*w,
+   high+dy,
+   center.z-SITE.z+forward[2]*t+right[2]*w
+  ];
+  // Planked Roman trestle, visible at the true river hex with bank abutments.
+  for(const width of [-15,15])b.band(segment(-half,width),segment(half,width),3,[.34,.23,.14]);
+  const planks=Math.max(8,Math.round(half*2/8));
+  for(let j=0;j<planks;j++){
+   const t=-half+(j+.5)*2*half/planks;
+   b.band(segment(t,-18,1.4),segment(t,18,1.4),6.4,j%2?[.59,.40,.25]:[.49,.33,.21]);
+  }
+  for(const t of [-half*.76,-half*.28,half*.28,half*.76])for(const side of [-19,19]){
+   b.tube(segment(t,side,-10),segment(t,side,15),1.6,1.4,[.38,.25,.15],7);
+  }
+  for(const side of [-19,19])b.band(segment(-half*.92,side,15),segment(half*.92,side,15),2.6,[.43,.29,.17]);
+  for(const t of [-half,half])for(const side of [-14,14])b.box(...segment(t,side,-5),14,15,14,[.47,.45,.39]);
  }
- for(let j=-7;j<=7;j++){
-  const t=j*8.0;
-  const a=segment(t,-16,1.3),c=segment(t,16,1.3);
-  b.band(a,c,6.8,j%2?[.58,.38,.22]:[.50,.33,.20]);
- }
- for(let j of [-5,-2,2,5])for(let side of [-17,17]){
-  const t=j*9.5;
-  b.tube(segment(t,side,-11),segment(t,side,15),1.7,1.4,[.38,.25,.15],7);
- }
- for(let side of [-17,17])b.band(segment(-55,side,15),segment(55,side,15),2.7,[.43,.29,.17]);
- // Four stone abutments ground the bridge in the existing topography.
- for(let t of [-59,59])for(let side of [-14,14])b.box(...segment(t,side,-5),13,15,15,[.47,.45,.39]);
 }
-
 function addWoods(b,q,r){
  const c=axialWorld(q,r),n=9+Math.floor(seeded(`trees:${q}:${r}`)*4);
  const colors=[[.20,.32,.17],[.27,.39,.20],[.19,.29,.20],[.34,.43,.22],[.29,.38,.23]];
@@ -274,7 +291,7 @@ function addFieldDressing(b,q,r){
  const f=getFeature(q,r),c=axialWorld(q,r);if(f?.type==='bridge'||f?.type==='river'||f?.type==='woods')return;
  for(let i=0;i<9;i++){
   const a=seeded(`grass-a:${q},${r}:${i}`)*Math.PI*2,rad=48*Math.sqrt(seeded(`grass-r:${q},${r}:${i}`)),x=c.x+Math.cos(a)*rad,z=c.z+Math.sin(a)*rad;
-  if(Math.abs(z-riverCenterZ(x))<riverHalfWidth(x)+16)continue;
+  if((ACTIVE_CAMPAIGN_SITE?riverDistance(x,z):Math.abs(z-riverCenterZ(x)))<riverHalfWidth(x)+16)continue;
   const y=terrainHeight(x,z)+3.7;
   const s=seeded(`grass-s:${q},${r}:${i}`),slope=terrainSlope(x,z,6);
   if(s>.8||slope>.6){b.ball(x-SITE.x,y,z-SITE.z,2.6+s*4,1.6+s*3,2+s*4,[.44,.42,.32],3,6);}

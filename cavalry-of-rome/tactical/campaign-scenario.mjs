@@ -3,6 +3,7 @@
  */
 import {SITE,allHexes,getFeature,validHex,configureCampaignSite,FEATURES} from './terrain-world.mjs';
 import {sceneEncounter} from './encounter-scenario.mjs';
+import {repairBattlefieldConnectivity} from './battlefield-connectivity.mjs';
 export function readCampaignContext(name=globalThis.name, framed=globalThis.parent!==globalThis){
  if(!framed)return null;
  try{
@@ -51,5 +52,9 @@ export function buildCampaignScenario(source){
  scenario.center={x:SITE.x,z:SITE.z};scenario.bearing=SITE.bearing;
  scenario.kind=source.kind??'arrival';scenario.hex={radius,cellSize:SITE.hexSize};
  scenario.board={radius,cellSize:SITE.hexSize,cells:mapped,featureCells:FEATURES.map(f=>({...f})),blockedCells:FEATURES.filter(f=>f.obstacle).map(f=>`${f.q},${f.r}`)};
+ const connected=repairBattlefieldConnectivity(scenario.board);
+ scenario.board=connected.board;
+ // Keep collision rules, 3D bridges and authored road features synchronized.
+ configureCampaignSite(scenario,radius);
  return scenario;
 }

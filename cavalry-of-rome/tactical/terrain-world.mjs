@@ -68,7 +68,7 @@ export function configureCampaignSite(encounter,radius=7){
   blocksLineOfSight:Boolean(f.blocksLineOfSight)
  })).filter(f=>validHex(f.q,f.r)));
  FEATURES_BY_KEY.clear();for(const f of FEATURES)FEATURES_BY_KEY.set(keyOf(f.q,f.r),f);
- const river=FEATURES.filter(f=>f.type==='river').map(f=>axialWorld(f.q,f.r));
+ const river=FEATURES.filter(f=>f.type==='river'||f.riverCrossing||(f.type==='bridge'&&GRID_DIRECTIONS.some(([dq,dr])=>FEATURES_BY_KEY.get(keyOf(f.q+dq,f.r+dr))?.type==='river'))).map(f=>axialWorld(f.q,f.r));
  // Trace the actual sampled water cells; no river is authored on a dry battle site.
  const ordered=[];
  if(river.length>0){

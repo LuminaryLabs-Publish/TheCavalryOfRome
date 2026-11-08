@@ -2,6 +2,7 @@
  * Works with itch static hosting once configured with a separate HTTPS API.
  */
 import {DOCTRINE_DEFS} from './turn-rules.mjs';
+import {doctrineArtwork} from './doctrine-art.mjs';
 import {sceneEncounter} from '../tactical/encounter-scenario.mjs';
 import {allHexes,getFeature} from '../tactical/terrain-world.mjs';
 import {reachableHexes,attackableUnits} from '../tactical/hex-combat.mjs';
@@ -85,21 +86,11 @@ function recentEvents(){const entries=selected?.state?.events||[];const containe
 function redrawResources(){const p=selected?.state?.resources?.own;const b=selected?.state?.battle;
  const vals=[p?.command??'—',p?.supply??'—',p?.momentum??'—',b?.turn??'—'];
  [...$('resources').children].forEach((node,i)=>node.querySelector('strong').textContent=vals[i]);}
-const motifs={
- 'marching-cadence':'<path d="M37 83L64 44 94 86M53 82l16-26 12 26"/><path d="M20 99h105M42 105h65"/>',
- 'supply-train':'<path d="M20 60h108v38H20zM42 60V43h60v17M31 98v17m89-17v17"/><circle cx="43" cy="112" r="9"/><circle cx="102" cy="112" r="9"/>',
- 'eagle-vow':'<path d="M75 25v90M49 35Q75 7 101 35L91 48Q75 28 59 48z"/><path d="M43 66q32-12 64 0M56 77l19 8 19-8"/>',
- 'lancer-signal':'<path d="M22 105L112 28M35 33l76 78M20 100l22-3M108 28l-6 26M35 33l6 25"/>',
- 'scouting-dispatch':'<circle cx="46" cy="72" r="16"/><circle cx="100" cy="72" r="16"/><path d="M61 59h25M27 70l-7-18 14-17h22M119 70l9-18-14-17H93"/>',
- 'road-levy':'<path d="M25 118Q30 45 68 22M117 118Q121 44 79 22"/><path d="M69 35l-2 16m1 17v16m1 17v15M37 105l77 0"/>',
- 'reserve-cohort':'<path d="M75 20l40 17v35q-10 29-40 47-30-18-40-47V37z"/><path d="M75 40v48M51 64h48"/>',
- 'drum-of-resolve':'<ellipse cx="75" cy="53" rx="37" ry="18"/><path d="M38 53v35q37 35 74 0V53M40 68l69 20M111 68L40 88M27 110l32-57M125 110L92 53"/>'
-};
-function iconSvg(type){return `<svg viewBox="0 0 150 140" aria-hidden="true"><circle cx="75" cy="70" r="60" fill="none" stroke="#d9b776" stroke-opacity=".25" stroke-width="1"/><g fill="none" stroke="#e7d3a1" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">${motifs[type]||''}</g></svg>`;}
+const iconSvg=doctrineArtwork;
 function renderHand(){const hand=$('hand');hand.replaceChildren();if(!selected)return;
  const active=turn(),p=selected.state.resources.own;
  for(const [index,c] of selected.state.hand.entries()){const def=DOCTRINE_DEFS[c.type];if(!def)continue;
-  const button=document.createElement('button');button.type='button';button.className='doctrine-card';
+  const button=document.createElement('button');button.type='button';button.className='doctrine-card';button.dataset.doctrine=c.type;
   const arc=index-(selected.state.hand.length-1)/2;
   button.style.setProperty('--fan-rotation',`${arc*2.7}deg`);
   button.style.setProperty('--fan-offset',`${Math.abs(arc)*7}px`);

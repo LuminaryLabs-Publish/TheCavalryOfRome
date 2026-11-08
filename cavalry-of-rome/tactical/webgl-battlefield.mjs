@@ -129,7 +129,7 @@ export function createBattlefield({canvas,labels,onHexClick,onStatus=()=>{}}){
  const world=createGpuMesh(gl,authorWorldScene());
  let highlights=null,bases=null,cardState=null,selectedId=null,eligible=[],moves=[],targets=[];
  let camYaw=-0.21,camPitch=.96,camDistance=1220,viewProj=ID(),eye=[0,0,0];
- const models=new Map(),animations=new Map();let raf=0,live=true,ready=false,lastSize={w:0,h:0};
+ const models=new Map(),animations=new Map();let hoveredId=null;let raf=0,live=true,ready=false,lastSize={w:0,h:0};
  const renderedHexes=allHexes().map(c=>({...c,world:axialWorld(c.q,c.r)}));
  function setState(state,{selectedUnitId=null,eligibleUnits=[],reachableCells=[],attackable=[]}={}){
   if(!state)return;
@@ -155,11 +155,11 @@ export function createBattlefield({canvas,labels,onHexClick,onStatus=()=>{}}){
  function buildLabels(){
   labels.replaceChildren();if(!cardState)return;
   for(const unit of cardState.battle.units){if(unit.status!=='ready'||unit.strength<=0)continue;
-   const tag=document.createElement('div');tag.className='unit-tag '+(unit.side==='attacker'?'roman':'rival');tag.dataset.unitId=unit.id;
+   const tag=document.createElement('div');tag.className='unit-tag '+(unit.side==='attacker'?'roman':'rival');tag.dataset.unitId=unit.id;tag.dataset.strength=String(unit.strength);
    const counts={light:24,medium:42,heavy:64};const nominal=Number(unit.soldiers||counts[unit.type]||24);
    const combatEstimate=Math.round(nominal*unit.strength/unit.maxStrength);
    const header=document.createElement('div');header.className='unit-tag__header';
-   const type=document.createElement('b');type.textContent=unit.type.toUpperCase();
+   const type=document.createElement('b');type.textContent=unit.label||unit.type.toUpperCase();
    const number=document.createElement('strong');number.textContent=String(combatEstimate);number.title='Estimated remaining soldiers';
    header.append(type,number);
    const bar=document.createElement('div');bar.className='unit-tag__bar';
@@ -193,18 +193,41 @@ export function createBattlefield({canvas,labels,onHexClick,onStatus=()=>{}}){
    const offsets=unit.type==='heavy'?[[-14,-6],[14,7]]:[[-17,-8],[17,-8],[0,14]];
    for(const [dx,dz] of offsets){const xx=x+dx,zz=z+dz;const y=ground+Math.max(-5,Math.min(6,terrainHeight(SITE.x+xx,SITE.z+zz)-terrainHeight(p.x,p.z)))*.3;drawMesh(model,transform(xx,y,zz,scale,facing));}
   }}
-  for(const label of labels.children){const unit=cardState?.battle.units.find(u=>u.id===label.dataset.unitId);if(!unit)continue;
-   const p=modelPosition(unit,t),screen=project([p.x-SITE.x,terrainHeight(p.x,p.z)+(unit.type==='heavy'?82:70),p.z-SITE.z],viewProj,dim.w,dim.h);
-   if(!screen||screen.x<15||screen.x>dim.w-15||screen.y<20||screen.y>dim.h-5){label.style.display='none';continue;}
-   label.style.display='block';label.style.transform=`translate(${Math.round(screen.x)}px,${Math.round(screen.y)}px) translate(-50%,-100%)`;
+  for(const label of labels.children){
+   const unit=cardState?.battle.units.find(u=>u.id===label.dataset.unitId);
+   if(!unit)continue;
+   const revealed=unit.id===selectedId||unit.id===hoveredId;
+   const p=modelPosition(unit,t);
+   const offset=revealed?(unit.type==='heavy'?82:70):27;
+   const screen=project([p.x-SITE.x,terrainHeight(p.x,p.z)+offset,p.z-SITE.z],viewProj,dim.w,dim.h);
+   const horizontalMargin=revealed?96:22;
+   if(!screen||screen.x<horizontalMargin||screen.x>dim.w-horizontalMargin||screen.y<28||screen.y>dim.h-12){
+    label.style.display='none';continue;
+   }
+   label.classList.toggle('revealed',revealed);
    label.classList.toggle('selected',unit.id===selectedId);
+   label.style.display='block';
+   label.style.transform=`translate(${Math.round(screen.x)}px,${Math.round(screen.y)}px) translate(-50%,-100%)`;
   }
  }
  let pointerDown=null;
  canvas.addEventListener('pointerdown',ev=>{
   if(ev.button!==0)return;pointerDown={x:ev.clientX,y:ev.clientY,lastX:ev.clientX,lastY:ev.clientY,drag:false};canvas.setPointerCapture(ev.pointerId);canvas.style.cursor='grabbing';
  });
- canvas.addEventListener('pointermove',ev=>{if(!pointerDown)return;
+ canvas.addEventListener('pointermove',ev=>{
+  if(!pointerDown){
+   const rect=canvas.getBoundingClientRect(),mx=ev.clientX-rect.left,my=ev.clientY-rect.top;
+   let best=36,closest=null;
+   for(const u of cardState?.battle?.units??[]){
+    if(u.status!=='ready'||u.strength<=0)continue;
+    const p=axialWorld(u.q,u.r);
+    const s=project([p.x-SITE.x,terrainHeight(p.x,p.z)+24,p.z-SITE.z],viewProj,rect.width,rect.height);
+    if(!s)continue;
+    const d=Math.hypot(s.x-mx,s.y-my);
+    if(d<best){best=d;closest=u.id;}
+   }
+   hoveredId=closest;return;
+  }
   const dx=ev.clientX-pointerDown.lastX,dy=ev.clientY-pointerDown.lastY;
   if(Math.hypot(ev.clientX-pointerDown.x,ev.clientY-pointerDown.y)>5)pointerDown.drag=true;
   if(pointerDown.drag){camYaw=clamp(camYaw+dx*.005,-1.25,1.25);camPitch=clamp(camPitch+dy*.004,.49,1.35);}
@@ -225,6 +248,7 @@ export function createBattlefield({canvas,labels,onHexClick,onStatus=()=>{}}){
   if(hit&&best<threshold)onHexClick({q:hit.q,r:hit.r});
  });
  canvas.addEventListener('pointercancel',()=>{pointerDown=null;canvas.style.cursor='crosshair';});
+ canvas.addEventListener('pointerleave',()=>{hoveredId=null;});
  canvas.addEventListener('wheel',ev=>{ev.preventDefault();camDistance=clamp(camDistance*Math.exp(ev.deltaY*.0011),680,2050);},{passive:false});
  const modelPaths=[];for(const side of ['roman','enemy'])for(const type of ['light','medium','heavy'])modelPaths.push(`${side}-${type}`);
  const readyPromise=Promise.all(modelPaths.map(async key=>{
