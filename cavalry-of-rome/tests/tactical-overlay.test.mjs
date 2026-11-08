@@ -13,7 +13,7 @@ test('overlay opens for encounter, rejects foreign messages and applies exactly 
   globalThis.removeEventListener=name=>listeners.delete(name);
   const overlay=createTacticalOverlay({engine});overlay.update(null);assert.equal(overlay.isActive(),false);
   overlay.update(encounter);assert.equal(overlay.isActive(),true);
-  assert.equal(new URL(iframe.src).pathname.endsWith('/tactical/index.html'),true);
+  assert.equal(new URL(iframe.src).pathname.endsWith('/multiplayer/index.html'),true);
   const init=JSON.parse(iframe.name);assert.equal(init.encounter.center.x,100);assert.equal(init.protocol,'cavalry:tactical:init:v1');
   const send=(source,origin,token)=>listeners.get('message')({source,origin,data:{type:'cavalry:tactical:result:v1',token,winner:'attacker',units:[]}});
   send({},globalThis.location.origin,init.token);send(iframe.contentWindow,'https://evil.example',init.token);send(iframe.contentWindow,globalThis.location.origin,'wrong');

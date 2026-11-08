@@ -18,12 +18,12 @@ export function createTacticalOverlay({engine, onError = console.error} = {}) {
   function open(encounter) {
     token = encounterToken(encounter);
     const el = document.createElement('iframe');
-    el.title = 'Cavalry of Rome — 3D command card battle';
+    el.title = 'Cavalry of Rome — 3D doctrine battle';
     el.className = 'cavalry-tactical-overlay';
     el.style.cssText='position:fixed;inset:0;z-index:999;width:100vw;height:100vh;border:0;background:#132019;display:block';
     // about:blank inherits the page's origin, preserving window.name on navigation.
     el.name = JSON.stringify({protocol:'cavalry:tactical:init:v1',token,encounter});
-    el.src = new URL('../tactical/index.html',import.meta.url).href;
+    el.src = new URL('../multiplayer/index.html',import.meta.url).href;
     frame=el;
     document.body.append(el);
   }

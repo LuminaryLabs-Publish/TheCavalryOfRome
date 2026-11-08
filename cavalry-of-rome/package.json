@@ -6,7 +6,8 @@
   "description": "Deterministic NexusEngine/NexusRealtime-style cavalry tactics experiment set on the Sabine Road.",
   "scripts": {
     "start": "python3 -m http.server 5173",
-    "test": "node --test tests/*.test.mjs tactical/tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs tactical/tests/*.test.mjs multiplayer/tests/*.test.mjs",
+    "multiplayer:server": "node multiplayer/server/index.mjs"
   },
   "keywords": [
     "nexusengine",

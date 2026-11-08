@@ -1,3 +1,9 @@
+# MP-001 implementation update — 2026-11-08
+
+The campaign now opens `cavalry-of-rome/multiplayer/index.html` with the original doctrine-card, Command, Supply and Momentum system. The adaptive learning AI acts through the same legal rules as human opponents. The former directional command-card UI is a preserved regression baseline only. The original validated same-origin result contract and strategic casualty/territory reconciliation are preserved. Persistent online PvP requires the separately deployed HTTPS match server.
+
+---
+
 # Published Cavalry of Rome — Integration Notes
 
 Target repository: `LuminaryLabs-Publish/TheCavalryOfRome`; branch `main`.

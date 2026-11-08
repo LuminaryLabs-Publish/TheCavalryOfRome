@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Cavalry of Rome — War Council</title>
+<link rel="stylesheet" href="./styles.css">
+<script defer src="https://cdn.jsdelivr.net/npm/peerjs@1.5.5/dist/peerjs.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+<script type="module" src="./client.mjs"></script>
+</head><body>
+<div class="shell">
+  <header class="masthead">
+    <div><span class="eyebrow">LUMINARY LABS / MULTIPLAYER CAMPAIGN</span><h1>CAVALRY <em>of</em> ROME</h1><p>COHORTS · SUPPLY · MOMENTUM</p></div>
+    <div class="server-status"><span id="connection-light" class="light"></span><span id="connection-status">Connecting to the match server…</span></div>
+  </header>
+  <div class="layout">
+    <aside class="sidebar">
+      <h2>War Council</h2>
+      <div id="identity-create" class="stack">
+        <label for="commander-name">Your commander name</label><input id="commander-name" maxlength="35" placeholder="Commander">
+        <button id="register" class="primary">ENTER THE WAR COUNCIL</button>
+        <label for="recovery-token">Already have a recovery token?</label><input type="password" id="recovery-token" placeholder="Paste your private token"><button id="recover">RESTORE COMMANDER</button>
+      </div>
+      <div id="identity-ready" class="stack" hidden><p class="eyebrow">SIGNED IN AS</p><strong id="commander-display"></strong><button id="copy-identity" class="quiet">COPY PRIVATE RECOVERY TOKEN</button></div>
+      <div class="stack api-settings"><label for="api-url">Match server HTTPS URL</label><div class="with-button"><input id="api-url" aria-label="Match server URL" placeholder="https://your-server.example"><button id="api-save">SET</button></div></div>
+      <div id="match-controls" class="stack" hidden>
+        <h3>New battle</h3><button id="create-human" class="primary">CHALLENGE A FRIEND</button><button id="create-ai">FACE ADAPTIVE AI</button>
+        <label for="invite-code">Join by invitation code</label><div class="with-button"><input id="invite-code" maxlength="8" placeholder="8-CHAR CODE"><button id="join">JOIN</button></div>
+        <div class="panel-header"><h3>Your battles</h3><button id="refresh-list" class="quiet">REFRESH</button></div><div id="match-list" class="match-list"><p class="muted">No battles yet.</p></div>
+      </div>
+    </aside>
+    <main class="gamepanel">
+      <div id="welcome" class="welcome"><div class="laurel">❧</div><h2>Command the frontier</h2><p>Lead living formations across a sculpted hex battlefield. Play by invitation, take turns over several days, or spar against a learning commander.</p><p class="muted">A separate persistent match server is required. PeerJS makes simultaneous sessions more responsive when both players are online.</p></div>
+      <div id="battle-ui" hidden>
+        <div class="battlebar"><div><span class="eyebrow" id="battle-role">YOUR COMMAND</span><h2 id="battle-label">Frontier engagement</h2><span id="battle-opponent" class="muted"></span></div><div class="battlebar-actions"><span id="battle-phase" class="phase-pill">AWAITING OPPONENT</span><button id="copy-invite">COPY INVITE</button></div></div>
+        <div class="battle-viewport"><canvas id="battle" aria-label="3D tactical battlefield"></canvas><div id="unit-labels" aria-hidden="true"></div><div id="hex-fallback" aria-label="Accessible tactical hex grid" hidden></div><div class="camera-tip">DRAG TO ORBIT · SCROLL TO ZOOM · SELECT A FORMATION</div><small id="render-status">PREPARING BATTLEFIELD…</small></div>
+        <div class="unit-controls"><div><span class="eyebrow">FORMATION IN FOCUS</span><strong id="selected-unit">Select a friendly formation</strong><p id="selected-description">Command any ready formation; doctrine cards are optional.</p></div><div class="unit-actions"><button id="rally">RALLY · 1 CMD</button><button id="surge">MOMENTUM SURGE · 2</button><button id="end-turn" class="primary">END ACTIVATION</button><button id="resign" class="quiet danger">CONCEDE</button><button id="return-campaign" class="primary" hidden>RETURN TO CAMPAIGN</button></div></div>
+        <section class="doctrine-section"><div class="doctrine-head"><h3>YOUR WAR COUNCIL DOCTRINES</h3><p>Play up to one doctrine per activation. Command points, not cards, authorize orders.</p></div><div id="hand" class="hand"></div></section>
+        <section class="battle-log"><div class="panel-header"><h3>Battle dispatches</h3><span id="match-version" class="muted"></span></div><div id="events" aria-live="polite"></div></section>
+      </div>
+    </main>
+    <aside class="info-rail"><h2>Campaign intelligence</h2><div id="resources" class="resource-grid"><div><small>COMMAND</small><strong>—</strong></div><div><small>SUPPLY</small><strong>—</strong></div><div><small>MOMENTUM</small><strong>—</strong></div><div><small>ROUND</small><strong>—</strong></div></div>
+      <div class="rulecard"><h3>Combat doctrine</h3><p>Every formation may be ordered. Move for <b>1</b> Command, attack for <b>2</b>, rally for <b>1</b>. Your unit can move and attack in the same activation.</p><p>Generate Momentum by striking or securing a road. Spend 2 Momentum for +1 Command once per activation.</p></div>
+      <p id="status-line" class="status-line" role="status" aria-live="polite">Your next battle begins in the War Council.</p>
+      <a class="quiet-link" href="../index.html">Return to the strategic single-player game</a>
+    </aside>
+  </div>
+</div>
+</body></html>

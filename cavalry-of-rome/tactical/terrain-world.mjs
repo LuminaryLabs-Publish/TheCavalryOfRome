@@ -80,6 +80,7 @@ export function configureCampaignSite(encounter,radius=7){
 }
 export function riverCenterZ(x){
  const p=RIVER_POLYLINE;
+ if(p.length===0)return SITE.z;
  if(x<=p[0].x)return p[0].z;
  if(x>=p.at(-1).x)return p.at(-1).z;
  for(let i=1;i<p.length;i++)if(x<=p[i].x){

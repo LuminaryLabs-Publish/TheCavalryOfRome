@@ -80,8 +80,13 @@ Use this for state-first debugging instead of inspecting canvas pixels.
 This is a playable v0.1 thin slice with no external dependencies. It is ready for iteration into fuller Roman cavalry domains: formations, command cadence, scouting, fatigue, terrain, enemy AI, campaign rewards, and replay-safe persistence.
 
 
-## Three-dimensional command-card encounters
+## Cohorts, Supply & Momentum — Active Tactical Game
 
-The full strategic campaign is still launched from this game directory with `npm run start`. When opposing armies meet on the map, a tactical encounter now opens automatically. Choose an illustrated command card from the five-card hand, order eligible miniature formations on terrain-conforming hexes, and fight or withdraw. After the result, the surviving soldier counts and captured territory return to the strategic campaign. The tactical battle may also be previewed independently at `/tactical/`.
+The strategic campaign now launches multiplayer/index.html in offline campaign mode for real encounters. The original deterministic hex combat remains the rules foundation, but the active command layer uses a four-card doctrine hand, Supply, Momentum, and Command points. The opposing single-player commander uses the adaptive learning policy and the same legal API as a human, not the historical section-command card AI. Campaign casualties and territorial results still return through the validated existing overlay contract.
 
-Combat source and the six GLB troop models live in `tactical/`. The original world renderer, marching and recruitment systems are preserved. Run `npm test` to exercise both the legacy game and the new tactical tests. Native Nexus authoring integration is still a separate validation step; asset meshes are procedurally authored and exported as GLBs.
+**Run single player:** `npm run start`. Start a march into hostile territory; the new doctrine encounter opens automatically.
+**Run AI practice:** open `/multiplayer/index.html?practice=1`. The old `/tactical/` demo link redirects there.
+**Run a local multiplayer server:** `npm run multiplayer:server` and open `http://localhost:8787/multiplayer/index.html`. Create or join independent persistent battles by invitation code; other players may be offline between turns.
+**Run all regression suites:** `npm test`.
+
+A public itch.io release requires an external HTTPS server with durable storage, configured CORS and real two-browser validation. PeerJS provides live-update hints but never authorizes or stores turns. See multiplayer/RULES.md and multiplayer/DEPLOYMENT.md. GitHub Actions workflows are unchanged.

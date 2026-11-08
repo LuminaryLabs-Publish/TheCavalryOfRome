@@ -1,3 +1,9 @@
+# Historical tactical prototype (not active gameplay)
+
+Active campaign and PvP use `../multiplayer/index.html` with the original Cohorts, Supply & Momentum doctrine rules and adaptive opponent. The direct `/tactical/` entry redirects to adaptive AI practice; code below is retained for the baseline regression suite.
+
+---
+
 # Cavalry of Rome — Tactical Command Cards (3D)
 
 This directory implements the 3D command-card battle for the existing Cavalry of Rome campaign. **The strategic game remains the root `cavalry-of-rome/` application.** When opposing armies encounter, its host opens this tactical screen and sends the current encounter board. Returning a battle result applies casualties, retreats and captures to the same campaign unit identities. The project also supports a demonstration battle if opened on its own.
