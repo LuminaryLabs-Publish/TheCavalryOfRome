@@ -1,5 +1,5 @@
 /** Low-level portable authoring primitives: each produced face is 3D geometry. */
-import {terrainHeight, originalWorldHeight,axialWorld,hexCornerWorld,SITE, seeded,clamp,allHexes,getFeature,riverCenterZ,riverHalfWidth,waterHeight,terrainSlope,cellNeighbors,keyOf,RIVER_PATH_CELLS,RIVER_POLYLINE,ACTIVE_CAMPAIGN_SITE,FEATURES,GRID_DIRECTIONS,tileMaterial} from './terrain-world.mjs';
+import {terrainHeight, originalWorldHeight,axialWorld,hexCornerWorld,SITE, seeded,clamp,allHexes,getFeature,riverCenterZ,riverHalfWidth,riverDistance,waterHeight,terrainSlope,cellNeighbors,keyOf,RIVER_PATH_CELLS,RIVER_POLYLINE,ACTIVE_CAMPAIGN_SITE,FEATURES,GRID_DIRECTIONS,tileMaterial} from './terrain-world.mjs';
 export const add3=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
 export const sub3=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
 export const cross3=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
